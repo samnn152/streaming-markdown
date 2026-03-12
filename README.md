@@ -1,4 +1,4 @@
-# streaming_markdown
+# animated_streaming_markdown
 
 This package is vibe-coded and currently under active construction.
 
@@ -6,7 +6,7 @@ API surface and behavior may change while streaming and rendering features are b
 
 ## Overview
 
-`streaming_markdown` is a Flutter FFI package for markdown streaming workflows. It exposes:
+`animated_streaming_markdown` is a Flutter FFI package for markdown streaming workflows. It exposes:
 
 - append-friendly rope buffers (`RopeString`, `NativeRopeBuffer`)
 - native tree-sitter markdown parsers (`TreeSitterMarkdownParser`)
@@ -20,7 +20,7 @@ Add dependency:
 
 ```yaml
 dependencies:
-  streaming_markdown: ^0.1.1
+  animated_streaming_markdown: ^0.1.2
 ```
 
 Then run:
@@ -32,7 +32,7 @@ flutter pub get
 ## Quick Start
 
 ```dart
-import 'package:streaming_markdown/streaming_markdown.dart';
+import 'package:animated_streaming_markdown/streaming_markdown.dart';
 
 Future<void> parseIncrementally() async {
   final worker = StreamingMarkdownParseWorker();
@@ -89,10 +89,10 @@ This package vendors only the required native sources under `packages/`:
 - `packages/tree-sitter-markdown` (block + inline markdown grammars)
 
 Both bundled upstream components are MIT-licensed. Current package
-(`streaming_markdown`) remains Apache-2.0.
+(`animated_streaming_markdown`) remains Apache-2.0.
 
 ## License
 
-`streaming_markdown` is licensed under Apache License 2.0. See [LICENSE](LICENSE).
+`animated_streaming_markdown` is licensed under Apache License 2.0. See [LICENSE](LICENSE).
 
 Third-party license details are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

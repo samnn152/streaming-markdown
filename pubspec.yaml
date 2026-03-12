@@ -1,6 +1,6 @@
-name: streaming_markdown
+name: animated_streaming_markdown
 description: "WIP Flutter package for incremental Markdown parsing and streaming UI rendering with tree-sitter."
-version: 0.1.1
+version: 0.1.2
 homepage: https://github.com/samnn152/streaming-markdown
 repository: https://github.com/samnn152/streaming-markdown
 issue_tracker: https://github.com/samnn152/streaming-markdown/issues

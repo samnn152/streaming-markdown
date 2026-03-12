@@ -1,4 +1,4 @@
-group = "com.hider152.streaming_markdown"
+group = "com.hider152.animated_streaming_markdown"
 version = "1.0"
 
 buildscript {
@@ -22,7 +22,7 @@ rootProject.allprojects {
 apply plugin: "com.android.library"
 
 android {
-    namespace = "com.hider152.streaming_markdown"
+    namespace = "com.hider152.animated_streaming_markdown"
     compileSdk = 36
 
     ndkVersion = android.ndkVersion

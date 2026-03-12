@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:streaming_markdown/streaming_markdown.dart';
+import 'package:animated_streaming_markdown/streaming_markdown.dart';
 
 void main() {
   test('library name is stable', () {
-    expect(streamingMarkdownLibraryName, 'streaming_markdown');
+    expect(streamingMarkdownLibraryName, 'animated_streaming_markdown');
   });
 
   test('rope string append, random access and substring', () {
