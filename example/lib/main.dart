@@ -56,7 +56,9 @@ class GeminiMarkdownDemoApp extends StatelessWidget {
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0A66C2)),
           useMaterial3: true,
         ),
-        home: const ChatPage(),
+        home: const ChatPage(
+          tokenRenderInterval: Duration(milliseconds: 300),
+        ),
       ),
     );
   }

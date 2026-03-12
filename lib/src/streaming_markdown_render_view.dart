@@ -6,17 +6,48 @@ import 'package:webview_flutter/webview_flutter.dart';
 
 import 'markdown_render_node.dart';
 
-class StreamingMarkdownRenderView extends StatelessWidget {
+part 'streaming_markdown_render_text_parsing.dart';
+
+class StreamingMarkdownRenderView extends StatelessWidget
+    with _StreamingMarkdownTextParsing {
   const StreamingMarkdownRenderView({
     super.key,
     required this.nodes,
     this.emptyPlaceholder = 'Không có node block đủ dữ liệu để render.',
     this.padding = const EdgeInsets.all(12),
+    this.allowUnclosedInlineDelimiters = false,
+    this.tokenArrivalDelay = Duration.zero,
+    this.tokenFadeInRelativeToDelay = 0,
+    this.tokenFadeInDuration,
+    this.tokenFadeInCurve = Curves.easeOut,
+    this.debugTokenHighlight = false,
   });
 
   final List<MarkdownRenderNode> nodes;
   final String emptyPlaceholder;
   final EdgeInsetsGeometry padding;
+  final bool allowUnclosedInlineDelimiters;
+  final Duration tokenArrivalDelay;
+  final double tokenFadeInRelativeToDelay;
+  final Duration? tokenFadeInDuration;
+  final Curve tokenFadeInCurve;
+  final bool debugTokenHighlight;
+
+  Duration _resolvedTokenFadeInDuration() {
+    final Duration? absolute = tokenFadeInDuration;
+    if (absolute != null) {
+      return absolute <= Duration.zero ? Duration.zero : absolute;
+    }
+    if (tokenFadeInRelativeToDelay <= 0 || tokenArrivalDelay <= Duration.zero) {
+      return Duration.zero;
+    }
+    final int micros =
+        (tokenArrivalDelay.inMicroseconds * tokenFadeInRelativeToDelay).round();
+    if (micros <= 0) {
+      return Duration.zero;
+    }
+    return Duration(microseconds: micros);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -332,6 +363,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
       children: [
         for (int i = 0; i < parsed.items.length; i++) ...[
           Padding(
+            key: ValueKey<String>('list_item_${parsed.items[i].stableKey}'),
             padding: EdgeInsets.only(left: parsed.items[i].level * 18.0),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -667,12 +699,15 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     final List<_InlineToken> tokens = _parseInlineTokens(
       normalized,
       references: linkReferences,
+      allowUnclosedDelimiters: allowUnclosedInlineDelimiters,
     );
     if (tokens.isEmpty) {
       return Text(normalized, style: resolvedStyle);
     }
+    final Duration tokenFadeDuration = _resolvedTokenFadeInDuration();
 
     final List<InlineSpan> spans = <InlineSpan>[];
+    int visualTokenIndex = 0;
     for (final _InlineToken token in tokens) {
       if (token.isImage) {
         spans.add(
@@ -757,738 +792,110 @@ class StreamingMarkdownRenderView extends StatelessWidget {
           color: const Color(0xFF58A6FF),
           decoration: TextDecoration.underline,
         );
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: InkWell(
-              onTap: () => _onLinkPressed(context, token.linkUrl!),
-              child: Text(token.text, style: style),
-            ),
-          ),
+        visualTokenIndex = _appendTokenizedTextSpans(
+          spans: spans,
+          text: token.text,
+          style: style,
+          startTokenIndex: visualTokenIndex,
+          fadeDuration: tokenFadeDuration,
+          fadeCurve: tokenFadeInCurve,
+          onTap: () => _onLinkPressed(context, token.linkUrl!),
         );
         continue;
       }
-      spans.add(TextSpan(text: token.text, style: style));
+      visualTokenIndex = _appendTokenizedTextSpans(
+        spans: spans,
+        text: token.text,
+        style: style,
+        startTokenIndex: visualTokenIndex,
+        fadeDuration: tokenFadeDuration,
+        fadeCurve: tokenFadeInCurve,
+      );
     }
 
     return RichText(
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),
       text: TextSpan(style: resolvedStyle, children: spans),
     );
   }
 
-  _ParsedList _parseListNode(MarkdownRenderNode node) {
-    final List<String> lines = _normalizedRaw(node.raw).split('\n');
-    final List<_ParsedListItem> items = <_ParsedListItem>[];
+  static const List<Color> _tokenDebugColors = <Color>[
+    Color(0xFFFFF3BF),
+    Color(0xFFD3F9D8),
+    Color(0xFFFFDEEB),
+    Color(0xFFD0EBFF),
+    Color(0xFFE5DBFF),
+    Color(0xFFFFE8CC),
+  ];
 
-    for (final String line in lines) {
-      final RegExpMatch? markerMatch = RegExp(
-        r'^(\s*)([-+*]|\d+[.)])\s+(.*)$',
-      ).firstMatch(line);
-      if (markerMatch == null) {
-        if (items.isNotEmpty && line.trim().isNotEmpty) {
-          final _ParsedListItem last = items.removeLast();
-          items.add(
-            _ParsedListItem(
-              level: last.level,
-              ordered: last.ordered,
-              order: last.order,
-              taskState: last.taskState,
-              text: '${last.text} ${line.trim()}',
-            ),
-          );
-        }
+  int _appendTokenizedTextSpans({
+    required List<InlineSpan> spans,
+    required String text,
+    required TextStyle style,
+    required int startTokenIndex,
+    required Duration fadeDuration,
+    required Curve fadeCurve,
+    VoidCallback? onTap,
+  }) {
+    int tokenIndex = startTokenIndex;
+    for (final RegExpMatch match in RegExp(r'\S+|\s+').allMatches(text)) {
+      final String piece = match.group(0) ?? '';
+      if (piece.isEmpty) {
         continue;
       }
 
-      final String marker = markerMatch.group(2)!;
-      String body = markerMatch.group(3)!.trimRight();
-      bool? taskState;
-      final RegExpMatch? taskMatch = RegExp(
-        r'^\[([ xX])\]\s*(.*)$',
-      ).firstMatch(body);
-      if (taskMatch != null) {
-        taskState = taskMatch.group(1)!.toLowerCase() == 'x';
-        body = taskMatch.group(2)!;
+      if (piece.trim().isEmpty) {
+        spans.add(TextSpan(text: piece, style: style));
+        continue;
       }
 
-      final int level = (markerMatch.group(1)!.length / 2).floor();
-      final bool ordered = RegExp(r'^\d').hasMatch(marker);
-      final int order = ordered
-          ? int.tryParse(marker.replaceAll(RegExp(r'[^0-9]'), '')) ?? 1
-          : 0;
+      final Widget tokenWidget;
+      if (debugTokenHighlight) {
+        final Color bgColor =
+            _tokenDebugColors[tokenIndex % _tokenDebugColors.length];
+        tokenWidget = Container(
+          margin: const EdgeInsets.symmetric(horizontal: 1),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            piece,
+            style: style.copyWith(
+              color: style.color ?? const Color(0xFF0D1117),
+            ),
+          ),
+        );
+      } else {
+        tokenWidget = Text(piece, style: style);
+      }
 
-      items.add(
-        _ParsedListItem(
-          level: level,
-          ordered: ordered,
-          order: order,
-          taskState: taskState,
-          text: body.trim(),
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: _FadeInTokenHost(
+            key: ValueKey<String>('token_${tokenIndex}_${piece.hashCode}'),
+            duration: fadeDuration,
+            curve: fadeCurve,
+            child: onTap == null
+                ? tokenWidget
+                : (debugTokenHighlight
+                      ? InkWell(
+                          onTap: onTap,
+                          borderRadius: BorderRadius.circular(4),
+                          child: tokenWidget,
+                        )
+                      : GestureDetector(onTap: onTap, child: tokenWidget)),
+          ),
         ),
       );
+      tokenIndex += 1;
     }
-
-    return _ParsedList(items: items);
-  }
-
-  _CalloutData? _parseCallout(String text) {
-    final List<String> lines = text.split('\n');
-    if (lines.isEmpty) {
-      return null;
-    }
-
-    final RegExpMatch? match = RegExp(
-      r'^\s*\[!(\w+)\]\s*(.*)$',
-    ).firstMatch(lines.first);
-    if (match == null) {
-      return null;
-    }
-
-    final String kind = match.group(1)!.toLowerCase();
-    final String title = match.group(2)!.trim().isEmpty
-        ? kind[0].toUpperCase() + kind.substring(1)
-        : match.group(2)!.trim();
-    final String body = lines.skip(1).join('\n').trim();
-
-    return _CalloutData(kind: kind, title: title, body: body);
-  }
-
-  Color _calloutColor(String? kind) {
-    switch (kind) {
-      case 'note':
-        return const Color(0xFF58A6FF);
-      case 'tip':
-        return const Color(0xFF3FB950);
-      case 'warning':
-        return const Color(0xFFD29922);
-      case 'important':
-        return const Color(0xFFBC8CFF);
-      case 'caution':
-        return const Color(0xFFF85149);
-      default:
-        return const Color(0xFF8B949E);
-    }
-  }
-
-  IconData _calloutIcon(String kind) {
-    switch (kind) {
-      case 'note':
-        return Icons.info_outline;
-      case 'tip':
-        return Icons.lightbulb_outline;
-      case 'warning':
-        return Icons.warning_amber_outlined;
-      case 'important':
-        return Icons.priority_high;
-      case 'caution':
-        return Icons.error_outline;
-      default:
-        return Icons.notes;
-    }
-  }
-
-  String _quoteText(MarkdownRenderNode node) {
-    return _normalizedRaw(node.raw)
-        .split('\n')
-        .map((String line) => line.replaceFirst(RegExp(r'^\s*>\s?'), ''))
-        .join('\n')
-        .trim();
-  }
-
-  String _codeText(MarkdownRenderNode node) {
-    final String raw = _normalizedRaw(node.raw);
-    if (node.type == 'fenced_code_block') {
-      final List<String> lines = raw.split('\n');
-      if (lines.isNotEmpty &&
-          RegExp(r'^\s*(```+|~~~+)').hasMatch(lines.first)) {
-        lines.removeAt(0);
-      }
-      if (lines.isNotEmpty &&
-          RegExp(r'^\s*(```+|~~~+)\s*$').hasMatch(lines.last)) {
-        lines.removeLast();
-      }
-      return lines.join('\n').trimRight();
-    }
-    return raw;
-  }
-
-  String _codeLanguage(String raw) {
-    final RegExpMatch? match = RegExp(
-      r'^\s*(```+|~~~+)\s*([A-Za-z0-9_+\-\.#]*)',
-      multiLine: true,
-    ).firstMatch(raw);
-    if (match == null) {
-      return '';
-    }
-    return match.group(2)!.trim();
-  }
-
-  _ParsedTable? _parseMarkdownTable(String raw) {
-    final List<String> lines = raw
-        .split('\n')
-        .map((String line) => line.trimRight())
-        .where((String line) => line.isNotEmpty)
-        .toList(growable: false);
-    if (lines.length < 2) {
-      return null;
-    }
-
-    int delimiterIndex = -1;
-    for (int i = 0; i < lines.length; i++) {
-      if (_isTableDelimiterRow(lines[i])) {
-        delimiterIndex = i;
-        break;
-      }
-    }
-    if (delimiterIndex <= 0) {
-      return null;
-    }
-
-    final List<String> headers = _splitTableRow(lines[delimiterIndex - 1]);
-    if (headers.isEmpty) {
-      return null;
-    }
-
-    final int width = headers.length;
-    final List<List<String>> rows = <List<String>>[];
-    for (int i = delimiterIndex + 1; i < lines.length; i++) {
-      final String line = lines[i].trim();
-      if (line.isEmpty || !line.contains('|')) {
-        continue;
-      }
-
-      final List<String> row = _splitTableRow(line);
-      if (row.isEmpty) {
-        continue;
-      }
-      while (row.length < width) {
-        row.add('');
-      }
-      if (row.length > width) {
-        row.removeRange(width, row.length);
-      }
-      rows.add(row);
-    }
-
-    return _ParsedTable(headers: headers, rows: rows);
-  }
-
-  bool _isTableDelimiterRow(String line) {
-    final List<String> cells = _splitTableRow(line);
-    if (cells.isEmpty) {
-      return false;
-    }
-
-    for (final String cell in cells) {
-      final String normalized = cell.replaceAll(' ', '');
-      if (!RegExp(r'^:?-+:?$').hasMatch(normalized)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  List<String> _splitTableRow(String line) {
-    final String value = line.trim();
-    if (!value.contains('|')) {
-      return <String>[];
-    }
-
-    final List<String> cells = <String>[];
-    final StringBuffer current = StringBuffer();
-    int codeFenceLength = 0;
-    bool escaped = false;
-
-    for (int i = 0; i < value.length; i++) {
-      final String ch = value[i];
-
-      if (escaped) {
-        current.write(ch);
-        escaped = false;
-        continue;
-      }
-
-      if (ch == '\\') {
-        escaped = true;
-        current.write(ch);
-        continue;
-      }
-
-      if (ch == '`') {
-        int runLength = 1;
-        while (i + runLength < value.length && value[i + runLength] == '`') {
-          runLength += 1;
-        }
-
-        if (codeFenceLength == 0) {
-          codeFenceLength = runLength;
-        } else if (runLength >= codeFenceLength) {
-          codeFenceLength = 0;
-        }
-
-        current.write(value.substring(i, i + runLength));
-        i += runLength - 1;
-        continue;
-      }
-
-      if (ch == '|' && codeFenceLength == 0) {
-        cells.add(current.toString().trim());
-        current.clear();
-        continue;
-      }
-
-      current.write(ch);
-    }
-    cells.add(current.toString().trim());
-
-    if (value.startsWith('|') && cells.isNotEmpty && cells.first.isEmpty) {
-      cells.removeAt(0);
-    }
-    if (value.endsWith('|') && cells.isNotEmpty && cells.last.isEmpty) {
-      cells.removeLast();
-    }
-
-    return cells
-        .map((String cell) => cell.replaceAll(r'\|', '|'))
-        .toList(growable: false);
-  }
-
-  Map<String, String> _extractLinkReferences(List<MarkdownRenderNode> nodes) {
-    final Map<String, String> references = <String, String>{};
-    for (final MarkdownRenderNode node in nodes) {
-      if (node.type != 'link_reference_definition') {
-        continue;
-      }
-      final String raw = _normalizedRaw(node.raw);
-      for (final RegExpMatch match in RegExp(
-        r'^\s*\[([^\]]+)\]:\s*(\S+)',
-        multiLine: true,
-      ).allMatches(raw)) {
-        final String name = _normalizeReferenceKey(match.group(1)!);
-        final String url = _stripEnclosingAngles(match.group(2)!);
-        if (name.isNotEmpty && url.isNotEmpty) {
-          references[name] = url;
-        }
-      }
-    }
-    return references;
-  }
-
-  List<_InlineToken> _parseInlineTokens(
-    String text, {
-    _InlineStyle style = const _InlineStyle(),
-    Map<String, String> references = const <String, String>{},
-    int depth = 0,
-  }) {
-    if (text.isEmpty) {
-      return <_InlineToken>[];
-    }
-    if (depth > 8) {
-      return <_InlineToken>[_InlineToken.text(text: text, style: style)];
-    }
-
-    final List<_InlineToken> tokens = <_InlineToken>[];
-    final StringBuffer plain = StringBuffer();
-
-    void flushPlain() {
-      if (plain.isEmpty) {
-        return;
-      }
-      tokens.add(_InlineToken.text(text: plain.toString(), style: style));
-      plain.clear();
-    }
-
-    int i = 0;
-    while (i < text.length) {
-      if (text.startsWith('![', i)) {
-        final _InlineImageMatch? image = _matchInlineImageAt(text, i);
-        if (image != null) {
-          flushPlain();
-          tokens.add(
-            _InlineToken.image(altText: image.alt, imageUrl: image.url),
-          );
-          i = image.end;
-          continue;
-        }
-      }
-
-      if (text.codeUnitAt(i) == 91) {
-        final _FootnoteReferenceMatch? footnoteRef = _matchFootnoteReferenceAt(
-          text,
-          i,
-        );
-        if (footnoteRef != null) {
-          flushPlain();
-          tokens.add(
-            _InlineToken.footnote(footnoteReferenceId: footnoteRef.id),
-          );
-          i = footnoteRef.end;
-          continue;
-        }
-
-        final _InlineLinkMatch? link = _matchInlineLinkAt(
-          text,
-          i,
-          references: references,
-        );
-        if (link != null) {
-          flushPlain();
-          final List<_InlineToken> labelTokens = _parseInlineTokens(
-            link.label,
-            style: style,
-            references: references,
-            depth: depth + 1,
-          );
-          if (labelTokens.isEmpty) {
-            tokens.add(
-              _InlineToken.text(
-                text: link.label,
-                style: style,
-                linkUrl: link.url,
-              ),
-            );
-          } else {
-            for (final _InlineToken token in labelTokens) {
-              if (token.isImage) {
-                tokens.add(token);
-              } else {
-                tokens.add(token.withLink(link.url));
-              }
-            }
-          }
-          i = link.end;
-          continue;
-        }
-      }
-
-      if (text.startsWith('<http://', i) || text.startsWith('<https://', i)) {
-        final int end = text.indexOf('>', i + 1);
-        if (end != -1) {
-          flushPlain();
-          final String url = text.substring(i + 1, end);
-          tokens.add(_InlineToken.text(text: url, style: style, linkUrl: url));
-          i = end + 1;
-          continue;
-        }
-      }
-
-      final _DelimitedMatch? code = _matchDelimited(text, i, '`');
-      if (code != null) {
-        flushPlain();
-        tokens.add(
-          _InlineToken.text(
-            text: code.inner,
-            style: style.copyWith(code: true),
-          ),
-        );
-        i = code.end;
-        continue;
-      }
-
-      final _DelimitedMatch? boldItalic = _matchAnyDelimited(
-        text,
-        i,
-        const <String>['***', '___'],
-      );
-      if (boldItalic != null) {
-        flushPlain();
-        tokens.addAll(
-          _parseInlineTokens(
-            boldItalic.inner,
-            style: style.copyWith(bold: true, italic: true),
-            references: references,
-            depth: depth + 1,
-          ),
-        );
-        i = boldItalic.end;
-        continue;
-      }
-
-      final _DelimitedMatch? bold = _matchAnyDelimited(text, i, const <String>[
-        '**',
-        '__',
-      ]);
-      if (bold != null) {
-        flushPlain();
-        tokens.addAll(
-          _parseInlineTokens(
-            bold.inner,
-            style: style.copyWith(bold: true),
-            references: references,
-            depth: depth + 1,
-          ),
-        );
-        i = bold.end;
-        continue;
-      }
-
-      final _DelimitedMatch? strike = _matchDelimited(text, i, '~~');
-      if (strike != null) {
-        flushPlain();
-        tokens.addAll(
-          _parseInlineTokens(
-            strike.inner,
-            style: style.copyWith(strikethrough: true),
-            references: references,
-            depth: depth + 1,
-          ),
-        );
-        i = strike.end;
-        continue;
-      }
-
-      final _DelimitedMatch? italic = _matchAnyDelimited(
-        text,
-        i,
-        const <String>['*', '_'],
-      );
-      if (italic != null) {
-        flushPlain();
-        tokens.addAll(
-          _parseInlineTokens(
-            italic.inner,
-            style: style.copyWith(italic: true),
-            references: references,
-            depth: depth + 1,
-          ),
-        );
-        i = italic.end;
-        continue;
-      }
-
-      plain.write(text[i]);
-      i += 1;
-    }
-
-    flushPlain();
-    return tokens;
-  }
-
-  _DelimitedMatch? _matchAnyDelimited(
-    String text,
-    int start,
-    List<String> delimiters,
-  ) {
-    for (final String delimiter in delimiters) {
-      final _DelimitedMatch? match = _matchDelimited(text, start, delimiter);
-      if (match != null) {
-        return match;
-      }
-    }
-    return null;
-  }
-
-  _FootnoteReferenceMatch? _matchFootnoteReferenceAt(String text, int start) {
-    final Match? match = RegExp(r'^\[\^([^\]]+)\]').matchAsPrefix(text, start);
-    if (match is! RegExpMatch) {
-      return null;
-    }
-    return _FootnoteReferenceMatch(id: match.group(1)!, end: match.end);
-  }
-
-  _FootnoteDefinition? _parseFootnoteDefinition(String raw) {
-    final List<String> lines = _normalizedRaw(raw).split('\n');
-    if (lines.isEmpty) {
-      return null;
-    }
-
-    final RegExpMatch? first = RegExp(
-      r'^\s*\[\^([^\]]+)\]:\s*(.*)$',
-    ).firstMatch(lines.first);
-    if (first == null) {
-      return null;
-    }
-
-    final String id = first.group(1)!.trim();
-    final List<String> body = <String>[first.group(2)!.trim()];
-
-    for (final String line in lines.skip(1)) {
-      if (line.trim().isEmpty) {
-        body.add('');
-        continue;
-      }
-      body.add(line.replaceFirst(RegExp(r'^\s{0,4}'), '').trimRight());
-    }
-
-    return _FootnoteDefinition(id: id, body: body.join('\n').trim());
-  }
-
-  _DelimitedMatch? _matchDelimited(String text, int start, String delimiter) {
-    if (!text.startsWith(delimiter, start)) {
-      return null;
-    }
-    final int endStart = text.indexOf(delimiter, start + delimiter.length);
-    if (endStart == -1) {
-      return null;
-    }
-    final String inner = text.substring(start + delimiter.length, endStart);
-    if (inner.isEmpty) {
-      return null;
-    }
-    return _DelimitedMatch(inner: inner, end: endStart + delimiter.length);
-  }
-
-  _InlineImageMatch? _matchInlineImageAt(String text, int start) {
-    if (!text.startsWith('![', start)) {
-      return null;
-    }
-    final int closeBracket = text.indexOf(']', start + 2);
-    if (closeBracket == -1 || closeBracket + 1 >= text.length) {
-      return null;
-    }
-
-    if (text[closeBracket + 1] != '(') {
-      return null;
-    }
-    final int closeParen = text.indexOf(')', closeBracket + 2);
-    if (closeParen == -1) {
-      return null;
-    }
-
-    final String alt = text.substring(start + 2, closeBracket).trim();
-    final String rawUrl = text.substring(closeBracket + 2, closeParen).trim();
-    if (rawUrl.isEmpty) {
-      return null;
-    }
-
-    final String url = _stripEnclosingAngles(
-      rawUrl.split(RegExp(r'\s+')).first,
-    );
-    return _InlineImageMatch(alt: alt, url: url, end: closeParen + 1);
-  }
-
-  _InlineImageMatch? _matchSingleInlineImage(String text) {
-    final String trimmed = text.trim();
-    final _InlineImageMatch? image = _matchInlineImageAt(trimmed, 0);
-    if (image == null || image.end != trimmed.length) {
-      return null;
-    }
-    return image;
-  }
-
-  _InlineLinkMatch? _matchInlineLinkAt(
-    String text,
-    int start, {
-    required Map<String, String> references,
-  }) {
-    if (!text.startsWith('[', start)) {
-      return null;
-    }
-
-    final int closeBracket = text.indexOf(']', start + 1);
-    if (closeBracket == -1) {
-      return null;
-    }
-
-    final String label = text.substring(start + 1, closeBracket);
-    if (label.isEmpty) {
-      return null;
-    }
-
-    if (closeBracket + 1 < text.length && text[closeBracket + 1] == '(') {
-      final int closeParen = text.indexOf(')', closeBracket + 2);
-      if (closeParen == -1) {
-        return null;
-      }
-
-      final String raw = text.substring(closeBracket + 2, closeParen).trim();
-      if (raw.isEmpty) {
-        return null;
-      }
-      final String url = _stripEnclosingAngles(raw.split(RegExp(r'\s+')).first);
-      return _InlineLinkMatch(label: label, url: url, end: closeParen + 1);
-    }
-
-    if (closeBracket + 1 < text.length && text[closeBracket + 1] == '[') {
-      final int closeRef = text.indexOf(']', closeBracket + 2);
-      if (closeRef == -1) {
-        return null;
-      }
-      final String rawKey = text.substring(closeBracket + 2, closeRef).trim();
-      final String key = _normalizeReferenceKey(
-        rawKey.isEmpty ? label : rawKey,
-      );
-      final String? url = references[key];
-      if (url == null) {
-        return null;
-      }
-      return _InlineLinkMatch(label: label, url: url, end: closeRef + 1);
-    }
-
-    final String? shortcutUrl = references[_normalizeReferenceKey(label)];
-    if (shortcutUrl != null) {
-      return _InlineLinkMatch(
-        label: label,
-        url: shortcutUrl,
-        end: closeBracket + 1,
-      );
-    }
-
-    return null;
-  }
-
-  String _normalizeReferenceKey(String key) {
-    return key.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
-  }
-
-  String _stripEnclosingAngles(String value) {
-    final String trimmed = value.trim();
-    if (trimmed.startsWith('<') &&
-        trimmed.endsWith('>') &&
-        trimmed.length > 2) {
-      return trimmed.substring(1, trimmed.length - 1);
-    }
-    return trimmed;
-  }
-
-  String _contentOrRaw(MarkdownRenderNode node) {
-    if (node.content.trim().isNotEmpty) {
-      return node.content.trim();
-    }
-    return _normalizedRaw(node.raw).trim();
-  }
-
-  String _headingText(MarkdownRenderNode node) {
-    if (node.content.trim().isNotEmpty) {
-      return node.content.trim();
-    }
-    final String raw = _normalizedRaw(node.raw);
-    return raw.replaceFirst(RegExp(r'^\s{0,3}#{1,6}\s*'), '').trim();
-  }
-
-  int _headingLevelForNode(MarkdownRenderNode node) {
-    if (node.type == 'atx_heading') {
-      final RegExpMatch? match = RegExp(
-        r'^\s{0,3}(#{1,6})\s',
-      ).firstMatch(node.raw);
-      if (match != null) {
-        return match.group(1)!.length;
-      }
-      return 1;
-    }
-
-    if (node.type == 'setext_heading') {
-      final List<String> lines = _normalizedRaw(node.raw).split('\n');
-      if (lines.length >= 2 && RegExp(r'^\s*=+\s*$').hasMatch(lines[1])) {
-        return 1;
-      }
-      return 2;
-    }
-
-    return 1;
-  }
-
-  String _paragraphText(MarkdownRenderNode node) {
-    final String raw = _normalizedRaw(node.raw).trim();
-    if (raw.isNotEmpty) {
-      return raw;
-    }
-    return node.content.trim();
-  }
-
-  String _normalizedRaw(String raw) {
-    return raw.replaceAll('\r', '').trimRight();
+    return tokenIndex;
   }
 
   void _onLinkPressed(BuildContext context, String url) {
@@ -1499,160 +906,6 @@ class StreamingMarkdownRenderView extends StatelessWidget {
   }
 }
 
-final class _ParsedList {
-  const _ParsedList({required this.items});
-
-  final List<_ParsedListItem> items;
-}
-
-final class _ParsedListItem {
-  const _ParsedListItem({
-    required this.level,
-    required this.ordered,
-    required this.order,
-    required this.taskState,
-    required this.text,
-  });
-
-  final int level;
-  final bool ordered;
-  final int order;
-  final bool? taskState;
-  final String text;
-}
-
-final class _ParsedTable {
-  const _ParsedTable({required this.headers, required this.rows});
-
-  final List<String> headers;
-  final List<List<String>> rows;
-}
-
-final class _CalloutData {
-  const _CalloutData({
-    required this.kind,
-    required this.title,
-    required this.body,
-  });
-
-  final String kind;
-  final String title;
-  final String body;
-}
-
-final class _DelimitedMatch {
-  const _DelimitedMatch({required this.inner, required this.end});
-
-  final String inner;
-  final int end;
-}
-
-final class _InlineImageMatch {
-  const _InlineImageMatch({
-    required this.alt,
-    required this.url,
-    required this.end,
-  });
-
-  final String alt;
-  final String url;
-  final int end;
-}
-
-final class _InlineLinkMatch {
-  const _InlineLinkMatch({
-    required this.label,
-    required this.url,
-    required this.end,
-  });
-
-  final String label;
-  final String url;
-  final int end;
-}
-
-final class _FootnoteReferenceMatch {
-  const _FootnoteReferenceMatch({required this.id, required this.end});
-
-  final String id;
-  final int end;
-}
-
-final class _FootnoteDefinition {
-  const _FootnoteDefinition({required this.id, required this.body});
-
-  final String id;
-  final String body;
-}
-
-final class _InlineStyle {
-  const _InlineStyle({
-    this.bold = false,
-    this.italic = false,
-    this.strikethrough = false,
-    this.code = false,
-  });
-
-  final bool bold;
-  final bool italic;
-  final bool strikethrough;
-  final bool code;
-
-  _InlineStyle copyWith({
-    bool? bold,
-    bool? italic,
-    bool? strikethrough,
-    bool? code,
-  }) {
-    return _InlineStyle(
-      bold: bold ?? this.bold,
-      italic: italic ?? this.italic,
-      strikethrough: strikethrough ?? this.strikethrough,
-      code: code ?? this.code,
-    );
-  }
-}
-
-final class _InlineToken {
-  const _InlineToken.text({
-    required this.text,
-    required this.style,
-    this.linkUrl,
-  }) : altText = '',
-       imageUrl = null,
-       footnoteReferenceId = null;
-
-  const _InlineToken.image({required this.altText, required this.imageUrl})
-    : text = '',
-      style = const _InlineStyle(),
-      linkUrl = null,
-      footnoteReferenceId = null;
-
-  const _InlineToken.footnote({required this.footnoteReferenceId})
-    : text = '',
-      style = const _InlineStyle(),
-      linkUrl = null,
-      altText = '',
-      imageUrl = null;
-
-  final String text;
-  final _InlineStyle style;
-  final String? linkUrl;
-  final String altText;
-  final String? imageUrl;
-  final String? footnoteReferenceId;
-
-  bool get isImage => imageUrl != null;
-  bool get isFootnoteReference => footnoteReferenceId != null;
-
-  _InlineToken withLink(String url) {
-    if (isImage || isFootnoteReference) {
-      return this;
-    }
-    return _InlineToken.text(text: text, style: style, linkUrl: url);
-  }
-}
-
 typedef _BlockBuilder =
     Widget Function(
       BuildContext context,
@@ -1660,7 +913,7 @@ typedef _BlockBuilder =
       Map<String, String> linkReferences,
     );
 
-class _BlockRenderHost extends StatefulWidget {
+class _BlockRenderHost extends StatelessWidget {
   const _BlockRenderHost({
     super.key,
     required this.signature,
@@ -1675,40 +928,58 @@ class _BlockRenderHost extends StatefulWidget {
   final _BlockBuilder builder;
 
   @override
-  State<_BlockRenderHost> createState() => _BlockRenderHostState();
+  Widget build(BuildContext context) {
+    return RepaintBoundary(child: builder(context, node, linkReferences));
+  }
 }
 
-class _BlockRenderHostState extends State<_BlockRenderHost> {
-  Widget? _cachedChild;
-  String? _lastSignature;
-  int? _lastThemeHash;
+class _FadeInTokenHost extends StatefulWidget {
+  const _FadeInTokenHost({
+    required this.duration,
+    required this.curve,
+    required this.child,
+    super.key,
+  });
+
+  final Duration duration;
+  final Curve curve;
+  final Widget child;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final int themeHash = Theme.of(context).hashCode;
-    if (_cachedChild == null || _lastThemeHash != themeHash) {
-      _lastThemeHash = themeHash;
-      _rebuildCache();
-    }
-  }
+  State<_FadeInTokenHost> createState() => _FadeInTokenHostState();
+}
+
+class _FadeInTokenHostState extends State<_FadeInTokenHost> {
+  bool _visible = false;
 
   @override
-  void didUpdateWidget(covariant _BlockRenderHost oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (_lastSignature != widget.signature) {
-      _rebuildCache();
+  void initState() {
+    super.initState();
+    _visible = widget.duration <= Duration.zero;
+    if (_visible) {
+      return;
     }
-  }
-
-  void _rebuildCache() {
-    _lastSignature = widget.signature;
-    _cachedChild = widget.builder(context, widget.node, widget.linkReferences);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _visible = true;
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(child: _cachedChild ?? const SizedBox.shrink());
+    if (widget.duration <= Duration.zero) {
+      return widget.child;
+    }
+    return AnimatedOpacity(
+      opacity: _visible ? 1 : 0,
+      duration: widget.duration,
+      curve: widget.curve,
+      child: widget.child,
+    );
   }
 }
 
