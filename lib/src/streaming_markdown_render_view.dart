@@ -13,12 +13,36 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     this.emptyPlaceholder = 'Không có node block đủ dữ liệu để render.',
     this.padding = const EdgeInsets.all(12),
     this.allowUnclosedInlineDelimiters = false,
+    this.tokenArrivalDelay = Duration.zero,
+    this.tokenFadeInRelativeToDelay = 0,
+    this.tokenFadeInDuration,
+    this.tokenFadeInCurve = Curves.easeOut,
   });
 
   final List<MarkdownRenderNode> nodes;
   final String emptyPlaceholder;
   final EdgeInsetsGeometry padding;
   final bool allowUnclosedInlineDelimiters;
+  final Duration tokenArrivalDelay;
+  final double tokenFadeInRelativeToDelay;
+  final Duration? tokenFadeInDuration;
+  final Curve tokenFadeInCurve;
+
+  Duration _resolvedTokenFadeInDuration() {
+    final Duration? absolute = tokenFadeInDuration;
+    if (absolute != null) {
+      return absolute <= Duration.zero ? Duration.zero : absolute;
+    }
+    if (tokenFadeInRelativeToDelay <= 0 || tokenArrivalDelay <= Duration.zero) {
+      return Duration.zero;
+    }
+    final int micros =
+        (tokenArrivalDelay.inMicroseconds * tokenFadeInRelativeToDelay).round();
+    if (micros <= 0) {
+      return Duration.zero;
+    }
+    return Duration(microseconds: micros);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -674,8 +698,10 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     if (tokens.isEmpty) {
       return Text(normalized, style: resolvedStyle);
     }
+    final Duration tokenFadeDuration = _resolvedTokenFadeInDuration();
 
     final List<InlineSpan> spans = <InlineSpan>[];
+    int visualTokenIndex = 0;
     for (final _InlineToken token in tokens) {
       if (token.isImage) {
         spans.add(
@@ -760,24 +786,101 @@ class StreamingMarkdownRenderView extends StatelessWidget {
           color: const Color(0xFF58A6FF),
           decoration: TextDecoration.underline,
         );
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: InkWell(
-              onTap: () => _onLinkPressed(context, token.linkUrl!),
-              child: Text(token.text, style: style),
-            ),
-          ),
+        visualTokenIndex = _appendTokenizedTextSpans(
+          spans: spans,
+          text: token.text,
+          style: style,
+          startTokenIndex: visualTokenIndex,
+          fadeDuration: tokenFadeDuration,
+          fadeCurve: tokenFadeInCurve,
+          onTap: () => _onLinkPressed(context, token.linkUrl!),
         );
         continue;
       }
-      spans.add(TextSpan(text: token.text, style: style));
+      visualTokenIndex = _appendTokenizedTextSpans(
+        spans: spans,
+        text: token.text,
+        style: style,
+        startTokenIndex: visualTokenIndex,
+        fadeDuration: tokenFadeDuration,
+        fadeCurve: tokenFadeInCurve,
+      );
     }
 
     return RichText(
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),
       text: TextSpan(style: resolvedStyle, children: spans),
     );
+  }
+
+  static const List<Color> _tokenDebugColors = <Color>[
+    Color(0xFFFFF3BF),
+    Color(0xFFD3F9D8),
+    Color(0xFFFFDEEB),
+    Color(0xFFD0EBFF),
+    Color(0xFFE5DBFF),
+    Color(0xFFFFE8CC),
+  ];
+
+  int _appendTokenizedTextSpans({
+    required List<InlineSpan> spans,
+    required String text,
+    required TextStyle style,
+    required int startTokenIndex,
+    required Duration fadeDuration,
+    required Curve fadeCurve,
+    VoidCallback? onTap,
+  }) {
+    int tokenIndex = startTokenIndex;
+    for (final RegExpMatch match in RegExp(r'\S+|\s+').allMatches(text)) {
+      final String piece = match.group(0) ?? '';
+      if (piece.isEmpty) {
+        continue;
+      }
+
+      if (piece.trim().isEmpty) {
+        spans.add(TextSpan(text: piece, style: style));
+        continue;
+      }
+
+      final Color bgColor =
+          _tokenDebugColors[tokenIndex % _tokenDebugColors.length];
+      final Widget tokenWidget = Container(
+        margin: const EdgeInsets.symmetric(horizontal: 1),
+        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 1),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(4),
+        ),
+        child: Text(
+          piece,
+          style: style.copyWith(color: style.color ?? const Color(0xFF0D1117)),
+        ),
+      );
+
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: _FadeInTokenHost(
+            key: ValueKey<String>('token_${tokenIndex}_${piece.hashCode}'),
+            duration: fadeDuration,
+            curve: fadeCurve,
+            child: onTap == null
+                ? tokenWidget
+                : InkWell(
+                    onTap: onTap,
+                    borderRadius: BorderRadius.circular(4),
+                    child: tokenWidget,
+                  ),
+          ),
+        ),
+      );
+      tokenIndex += 1;
+    }
+    return tokenIndex;
   }
 
   _ParsedList _parseListNode(MarkdownRenderNode node) {
@@ -1689,7 +1792,7 @@ typedef _BlockBuilder =
       Map<String, String> linkReferences,
     );
 
-class _BlockRenderHost extends StatefulWidget {
+class _BlockRenderHost extends StatelessWidget {
   const _BlockRenderHost({
     super.key,
     required this.signature,
@@ -1704,40 +1807,58 @@ class _BlockRenderHost extends StatefulWidget {
   final _BlockBuilder builder;
 
   @override
-  State<_BlockRenderHost> createState() => _BlockRenderHostState();
+  Widget build(BuildContext context) {
+    return RepaintBoundary(child: builder(context, node, linkReferences));
+  }
 }
 
-class _BlockRenderHostState extends State<_BlockRenderHost> {
-  Widget? _cachedChild;
-  String? _lastSignature;
-  int? _lastThemeHash;
+class _FadeInTokenHost extends StatefulWidget {
+  const _FadeInTokenHost({
+    required this.duration,
+    required this.curve,
+    required this.child,
+    super.key,
+  });
+
+  final Duration duration;
+  final Curve curve;
+  final Widget child;
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final int themeHash = Theme.of(context).hashCode;
-    if (_cachedChild == null || _lastThemeHash != themeHash) {
-      _lastThemeHash = themeHash;
-      _rebuildCache();
-    }
-  }
+  State<_FadeInTokenHost> createState() => _FadeInTokenHostState();
+}
+
+class _FadeInTokenHostState extends State<_FadeInTokenHost> {
+  bool _visible = false;
 
   @override
-  void didUpdateWidget(covariant _BlockRenderHost oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (_lastSignature != widget.signature) {
-      _rebuildCache();
+  void initState() {
+    super.initState();
+    _visible = widget.duration <= Duration.zero;
+    if (_visible) {
+      return;
     }
-  }
-
-  void _rebuildCache() {
-    _lastSignature = widget.signature;
-    _cachedChild = widget.builder(context, widget.node, widget.linkReferences);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _visible = true;
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(child: _cachedChild ?? const SizedBox.shrink());
+    if (widget.duration <= Duration.zero) {
+      return widget.child;
+    }
+    return AnimatedOpacity(
+      opacity: _visible ? 1 : 0,
+      duration: widget.duration,
+      curve: widget.curve,
+      child: widget.child,
+    );
   }
 }
 

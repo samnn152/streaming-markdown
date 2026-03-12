@@ -32,12 +32,16 @@ final class TokenRenderController extends ChangeNotifier {
 class ChatPage extends StatefulWidget {
   const ChatPage({
     this.tokenRenderInterval = _kDefaultTokenRenderInterval,
+    this.markdownTokenFadeInRelativeToDelay = 1,
+    this.markdownTokenFadeInDuration,
     this.onTokenRenderEnd,
     this.tokenRenderController,
     super.key,
   });
 
   final Duration tokenRenderInterval;
+  final double markdownTokenFadeInRelativeToDelay;
+  final Duration? markdownTokenFadeInDuration;
 
   /// Called when UI has rendered all currently available server content.
   /// [forced] is true when completion is triggered by [TokenRenderController].
@@ -345,6 +349,10 @@ class _ChatPageState extends State<ChatPage> {
           answerArea = StreamingMarkdownRenderView(
             nodes: _displayedAnswerNodes,
             allowUnclosedInlineDelimiters: true,
+            tokenArrivalDelay: widget.tokenRenderInterval,
+            tokenFadeInRelativeToDelay:
+                widget.markdownTokenFadeInRelativeToDelay,
+            tokenFadeInDuration: widget.markdownTokenFadeInDuration,
           );
         } else if (_displayedMarkdown.isNotEmpty) {
           answerArea = SingleChildScrollView(
