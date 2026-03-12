@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:animated_streaming_markdown/streaming_markdown.dart';
+import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 
 import 'src/core/config/app_env.dart';
 import 'src/features/chat/data/datasources/gemini_remote_data_source.dart';
