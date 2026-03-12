@@ -1,5 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:streaming_markdown/streaming_markdown.dart';
+import 'package:animated_streaming_markdown/streaming_markdown.dart';
 
 import '../../domain/usecases/stream_chat_answer_use_case.dart';
 

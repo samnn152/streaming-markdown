@@ -1,7 +1,7 @@
 import 'dart:ffi';
 import 'dart:io';
 
-const String streamingMarkdownLibraryName = 'streaming_markdown';
+const String streamingMarkdownLibraryName = 'animated_streaming_markdown';
 
 DynamicLibrary? _cachedLibrary;
 Object? _libraryLoadError;
