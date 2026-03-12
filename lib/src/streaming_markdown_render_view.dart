@@ -12,11 +12,13 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     required this.nodes,
     this.emptyPlaceholder = 'Không có node block đủ dữ liệu để render.',
     this.padding = const EdgeInsets.all(12),
+    this.allowUnclosedInlineDelimiters = false,
   });
 
   final List<MarkdownRenderNode> nodes;
   final String emptyPlaceholder;
   final EdgeInsetsGeometry padding;
+  final bool allowUnclosedInlineDelimiters;
 
   @override
   Widget build(BuildContext context) {
@@ -667,6 +669,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     final List<_InlineToken> tokens = _parseInlineTokens(
       normalized,
       references: linkReferences,
+      allowUnclosedDelimiters: allowUnclosedInlineDelimiters,
     );
     if (tokens.isEmpty) {
       return Text(normalized, style: resolvedStyle);
@@ -1080,6 +1083,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     _InlineStyle style = const _InlineStyle(),
     Map<String, String> references = const <String, String>{},
     int depth = 0,
+    bool allowUnclosedDelimiters = false,
   }) {
     if (text.isEmpty) {
       return <_InlineToken>[];
@@ -1139,6 +1143,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
             style: style,
             references: references,
             depth: depth + 1,
+            allowUnclosedDelimiters: allowUnclosedDelimiters,
           );
           if (labelTokens.isEmpty) {
             tokens.add(
@@ -1190,6 +1195,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
         text,
         i,
         const <String>['***', '___'],
+        allowUnclosedDelimiters: allowUnclosedDelimiters,
       );
       if (boldItalic != null) {
         flushPlain();
@@ -1199,6 +1205,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
             style: style.copyWith(bold: true, italic: true),
             references: references,
             depth: depth + 1,
+            allowUnclosedDelimiters: allowUnclosedDelimiters,
           ),
         );
         i = boldItalic.end;
@@ -1208,7 +1215,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
       final _DelimitedMatch? bold = _matchAnyDelimited(text, i, const <String>[
         '**',
         '__',
-      ]);
+      ], allowUnclosedDelimiters: allowUnclosedDelimiters);
       if (bold != null) {
         flushPlain();
         tokens.addAll(
@@ -1217,6 +1224,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
             style: style.copyWith(bold: true),
             references: references,
             depth: depth + 1,
+            allowUnclosedDelimiters: allowUnclosedDelimiters,
           ),
         );
         i = bold.end;
@@ -1232,6 +1240,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
             style: style.copyWith(strikethrough: true),
             references: references,
             depth: depth + 1,
+            allowUnclosedDelimiters: allowUnclosedDelimiters,
           ),
         );
         i = strike.end;
@@ -1242,6 +1251,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
         text,
         i,
         const <String>['*', '_'],
+        allowUnclosedDelimiters: allowUnclosedDelimiters,
       );
       if (italic != null) {
         flushPlain();
@@ -1251,6 +1261,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
             style: style.copyWith(italic: true),
             references: references,
             depth: depth + 1,
+            allowUnclosedDelimiters: allowUnclosedDelimiters,
           ),
         );
         i = italic.end;
@@ -1268,10 +1279,16 @@ class StreamingMarkdownRenderView extends StatelessWidget {
   _DelimitedMatch? _matchAnyDelimited(
     String text,
     int start,
-    List<String> delimiters,
-  ) {
+    List<String> delimiters, {
+    required bool allowUnclosedDelimiters,
+  }) {
     for (final String delimiter in delimiters) {
-      final _DelimitedMatch? match = _matchDelimited(text, start, delimiter);
+      final _DelimitedMatch? match = _matchDelimited(
+        text,
+        start,
+        delimiter,
+        allowUnclosedTail: allowUnclosedDelimiters,
+      );
       if (match != null) {
         return match;
       }
@@ -1314,13 +1331,25 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     return _FootnoteDefinition(id: id, body: body.join('\n').trim());
   }
 
-  _DelimitedMatch? _matchDelimited(String text, int start, String delimiter) {
+  _DelimitedMatch? _matchDelimited(
+    String text,
+    int start,
+    String delimiter, {
+    bool allowUnclosedTail = false,
+  }) {
     if (!text.startsWith(delimiter, start)) {
       return null;
     }
     final int endStart = text.indexOf(delimiter, start + delimiter.length);
     if (endStart == -1) {
-      return null;
+      if (!allowUnclosedTail) {
+        return null;
+      }
+      final String unclosedInner = text.substring(start + delimiter.length);
+      if (unclosedInner.isEmpty) {
+        return null;
+      }
+      return _DelimitedMatch(inner: unclosedInner, end: text.length);
     }
     final String inner = text.substring(start + delimiter.length, endStart);
     if (inner.isEmpty) {
