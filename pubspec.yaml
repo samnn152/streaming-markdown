@@ -1,7 +1,10 @@
 name: streaming_markdown
-description: "Flutter FFI plugin exposing tree-sitter markdown language."
-version: 0.0.1
-homepage:
+description: "WIP Flutter package for incremental Markdown parsing and streaming UI rendering with tree-sitter."
+version: 0.1.0
+homepage: https://github.com/samnn152/streaming-markdown
+repository: https://github.com/samnn152/streaming-markdown
+issue_tracker: https://github.com/samnn152/streaming-markdown/issues
+documentation: https://github.com/samnn152/streaming-markdown#readme
 
 environment:
   sdk: ^3.10.8
