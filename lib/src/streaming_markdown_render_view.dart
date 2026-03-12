@@ -21,6 +21,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     this.tokenFadeInDuration,
     this.tokenFadeInCurve = Curves.easeOut,
     this.debugTokenHighlight = false,
+    this.enableTextSelection = false,
   });
 
   final List<MarkdownRenderNode> nodes;
@@ -32,6 +33,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
   final Duration? tokenFadeInDuration;
   final Curve tokenFadeInCurve;
   final bool debugTokenHighlight;
+  final bool enableTextSelection;
 
   Duration _resolvedTokenFadeInDuration() {
     final Duration? absolute = tokenFadeInDuration;
@@ -59,7 +61,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     final Map<String, String> linkReferences = _extractLinkReferences(nodes);
     final String refsDigest = _linkReferencesDigest(linkReferences);
 
-    return SingleChildScrollView(
+    final Widget content = SingleChildScrollView(
       padding: padding,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -77,6 +79,11 @@ class StreamingMarkdownRenderView extends StatelessWidget
         ],
       ),
     );
+
+    if (!enableTextSelection) {
+      return content;
+    }
+    return SelectionArea(child: content);
   }
 
   List<MarkdownRenderNode> _collectRenderableBlocks(
@@ -813,11 +820,91 @@ class StreamingMarkdownRenderView extends StatelessWidget
       );
     }
 
-    return RichText(
+    final Widget animatedRichText = RichText(
       textAlign: TextAlign.left,
       textDirection: TextDirection.ltr,
       textScaler: MediaQuery.textScalerOf(context),
       text: TextSpan(style: resolvedStyle, children: spans),
+    );
+    if (!enableTextSelection) {
+      return animatedRichText;
+    }
+
+    final List<InlineSpan> selectableSpans = <InlineSpan>[];
+    for (final _InlineToken token in tokens) {
+      if (token.isImage) {
+        final String imageText = token.altText.isEmpty
+            ? '[image]'
+            : '[image: ${token.altText}]';
+        selectableSpans.add(
+          TextSpan(
+            text: imageText,
+            style: _selectionOverlayStyle(
+              resolvedStyle.copyWith(fontStyle: FontStyle.italic),
+            ),
+          ),
+        );
+        continue;
+      }
+
+      if (token.isFootnoteReference) {
+        selectableSpans.add(
+          TextSpan(
+            text: '[${token.footnoteReferenceId}]',
+            style: _selectionOverlayStyle(
+              resolvedStyle.copyWith(fontSize: 11, fontWeight: FontWeight.w600),
+            ),
+          ),
+        );
+        continue;
+      }
+
+      TextStyle style = resolvedStyle;
+      if (token.style.bold) {
+        style = style.copyWith(fontWeight: FontWeight.w700);
+      }
+      if (token.style.italic) {
+        style = style.copyWith(fontStyle: FontStyle.italic);
+      }
+      if (token.style.strikethrough) {
+        style = style.copyWith(decoration: TextDecoration.lineThrough);
+      }
+      if (token.style.code) {
+        style = style.copyWith(fontFamily: 'monospace', fontSize: 12);
+      }
+      if (token.linkUrl != null && token.linkUrl!.isNotEmpty) {
+        style = style.copyWith(decoration: TextDecoration.underline);
+      }
+
+      selectableSpans.add(
+        TextSpan(text: token.text, style: _selectionOverlayStyle(style)),
+      );
+    }
+
+    return Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        animatedRichText,
+        Positioned.fill(
+          child: RichText(
+            textAlign: TextAlign.left,
+            textDirection: TextDirection.ltr,
+            textScaler: MediaQuery.textScalerOf(context),
+            selectionRegistrar: SelectionContainer.maybeOf(context),
+            selectionColor: const Color(0x6658A6FF),
+            text: TextSpan(style: resolvedStyle, children: selectableSpans),
+          ),
+        ),
+      ],
+    );
+  }
+
+  TextStyle _selectionOverlayStyle(TextStyle style) {
+    return style.copyWith(
+      color: Colors.transparent,
+      backgroundColor: Colors.transparent,
+      decorationColor: Colors.transparent,
+      shadows: const <Shadow>[],
     );
   }
 

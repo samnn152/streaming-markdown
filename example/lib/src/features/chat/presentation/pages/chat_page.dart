@@ -34,6 +34,7 @@ class ChatPage extends StatefulWidget {
     this.tokenRenderInterval = _kDefaultTokenRenderInterval,
     this.markdownTokenFadeInRelativeToDelay = 1,
     this.markdownTokenFadeInDuration,
+    this.markdownEnableSelection = false,
     this.onTokenRenderEnd,
     this.tokenRenderController,
     super.key,
@@ -42,6 +43,7 @@ class ChatPage extends StatefulWidget {
   final Duration tokenRenderInterval;
   final double markdownTokenFadeInRelativeToDelay;
   final Duration? markdownTokenFadeInDuration;
+  final bool markdownEnableSelection;
 
   /// Called when UI has rendered all currently available server content.
   /// [forced] is true when completion is triggered by [TokenRenderController].
@@ -353,6 +355,7 @@ class _ChatPageState extends State<ChatPage> {
             tokenFadeInRelativeToDelay:
                 widget.markdownTokenFadeInRelativeToDelay,
             tokenFadeInDuration: widget.markdownTokenFadeInDuration,
+            enableTextSelection: widget.markdownEnableSelection,
           );
         } else if (_displayedMarkdown.isNotEmpty) {
           answerArea = SingleChildScrollView(
