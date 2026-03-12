@@ -20,7 +20,7 @@ Add dependency:
 
 ```yaml
 dependencies:
-  animated_streaming_markdown: ^0.1.2
+  animated_streaming_markdown: ^0.1.3
 ```
 
 Then run:
