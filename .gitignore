@@ -31,3 +31,7 @@ migrate_working_dir/
 /coverage/
 .env
 example/.env
+
+# Keep vendored parser sources tracked for publishing/build.
+!/packages/tree-sitter/
+!/packages/tree-sitter-markdown/

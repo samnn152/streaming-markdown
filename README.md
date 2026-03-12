@@ -20,9 +20,7 @@ Add dependency:
 
 ```yaml
 dependencies:
-  streaming_markdown:
-    git:
-      url: <your_repo_url>
+  streaming_markdown: ^0.1.0
 ```
 
 Then run:
