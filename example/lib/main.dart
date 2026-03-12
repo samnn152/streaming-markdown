@@ -58,6 +58,7 @@ class GeminiMarkdownDemoApp extends StatelessWidget {
         ),
         home: const ChatPage(
           tokenRenderInterval: Duration(milliseconds: 300),
+          markdownEnableSelection: true,
         ),
       ),
     );
