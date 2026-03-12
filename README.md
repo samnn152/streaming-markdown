@@ -20,7 +20,7 @@ Add dependency:
 
 ```yaml
 dependencies:
-  streaming_markdown: ^0.1.0
+  streaming_markdown: ^0.1.1
 ```
 
 Then run:
@@ -81,14 +81,15 @@ Use IDE hover/completion docs or `dart doc` to generate HTML docs.
 
 See `example/` for a dual-pane chat demo (default theme vs custom theme) with shared question input and streaming markdown rendering.
 
-## tree-sitter-markdown Dependency
+## Bundled Tree-sitter Dependencies
 
-This package vendors and depends on `tree-sitter-markdown` sources under `packages/tree-sitter-markdown`.
+This package vendors only the required native sources under `packages/`:
 
-- Upstream `tree-sitter-markdown` license: MIT
-- Current package (`streaming_markdown`) license: Apache-2.0
+- `packages/tree-sitter` (tree-sitter runtime)
+- `packages/tree-sitter-markdown` (block + inline markdown grammars)
 
-The bundled MIT-licensed third-party code remains under MIT terms.
+Both bundled upstream components are MIT-licensed. Current package
+(`streaming_markdown`) remains Apache-2.0.
 
 ## License
 
