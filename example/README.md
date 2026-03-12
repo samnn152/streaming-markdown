@@ -1,6 +1,6 @@
 # Streaming Markdown Flutter Example
 
-Flutter demo app for visual markdown parsing with `streaming_markdown`.
+Flutter demo app for visual markdown parsing with `animated_streaming_markdown`.
 
 ## What it shows
 

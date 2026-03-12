@@ -1,3 +1,8 @@
+## 0.1.2
+
+- Rename package to `animated_streaming_markdown`.
+- Update plugin platform wiring and example imports for the new package name.
+
 ## 0.1.1
 
 - Vendor only required tree-sitter runtime and tree-sitter-markdown parser sources.

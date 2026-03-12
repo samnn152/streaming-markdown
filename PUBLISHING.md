@@ -1,6 +1,6 @@
 # Publishing Checklist (pub.dev)
 
-This file documents the release flow for `streaming_markdown`.
+This file documents the release flow for `animated_streaming_markdown`.
 
 ## 1. Preconditions
 

@@ -27,7 +27,9 @@ final class NativeIncrementalMarkdownParser implements Finalizable {
   /// Throws [StateError] when the native library is unavailable.
   factory NativeIncrementalMarkdownParser.create() {
     if (!isStreamingMarkdownNativeLibraryAvailable) {
-      throw StateError('Native streaming_markdown library is unavailable');
+      throw StateError(
+        'Native animated_streaming_markdown library is unavailable',
+      );
     }
 
     final Pointer<Void> handle = _createSession();
