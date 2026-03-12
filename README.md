@@ -32,7 +32,7 @@ flutter pub get
 ## Quick Start
 
 ```dart
-import 'package:animated_streaming_markdown/streaming_markdown.dart';
+import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 
 Future<void> parseIncrementally() async {
   final worker = StreamingMarkdownParseWorker();
@@ -72,7 +72,7 @@ StreamingMarkdownRenderView(
 
 Public API docs are written as DartDoc comments directly in source files:
 
-- `lib/streaming_markdown.dart` (entrypoint and export guide)
+- `lib/animated_streaming_markdown.dart` (entrypoint and export guide)
 - exported API classes in `lib/src/*`
 
 Use IDE hover/completion docs or `dart doc` to generate HTML docs.

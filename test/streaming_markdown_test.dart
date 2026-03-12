@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:animated_streaming_markdown/streaming_markdown.dart';
+import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 
 void main() {
   test('library name is stable', () {
