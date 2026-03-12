@@ -1,3 +1,8 @@
+## 0.1.3
+
+- Hotfix iOS/macOS native build by restoring `tree_sitter/parser.h` in vendored tree-sitter include path.
+- Regenerate example iOS Pod lockfile to use `animated_streaming_markdown` plugin name.
+
 ## 0.1.2
 
 - Rename package to `animated_streaming_markdown`.
