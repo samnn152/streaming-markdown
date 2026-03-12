@@ -171,13 +171,13 @@ mixin _StreamingMarkdownTextParsing {
       return null;
     }
 
-    final List<String> headers = _splitTableRow(lines[delimiterIndex - 1]);
-    if (headers.isEmpty) {
-      return null;
-    }
+    final List<String> rawHeaders = _splitTableRow(lines[delimiterIndex - 1]);
+    final List<String> delimiterCells = _splitTableRow(lines[delimiterIndex]);
+    int width = rawHeaders.length > delimiterCells.length
+        ? rawHeaders.length
+        : delimiterCells.length;
 
-    final int width = headers.length;
-    final List<List<String>> rows = <List<String>>[];
+    final List<List<String>> rawRows = <List<String>>[];
     for (int i = delimiterIndex + 1; i < lines.length; i++) {
       final String line = lines[i].trim();
       if (line.isEmpty || !line.contains('|')) {
@@ -188,16 +188,33 @@ mixin _StreamingMarkdownTextParsing {
       if (row.isEmpty) {
         continue;
       }
-      while (row.length < width) {
-        row.add('');
-      }
+      rawRows.add(row);
       if (row.length > width) {
-        row.removeRange(width, row.length);
+        width = row.length;
       }
-      rows.add(row);
     }
 
+    if (width <= 0) {
+      return null;
+    }
+
+    final List<String> headers = _fitTableRowToWidth(rawHeaders, width);
+    final List<List<String>> rows = rawRows
+        .map((List<String> row) => _fitTableRowToWidth(row, width))
+        .toList(growable: false);
+
     return _ParsedTable(headers: headers, rows: rows);
+  }
+
+  List<String> _fitTableRowToWidth(List<String> row, int width) {
+    final List<String> out = row.toList(growable: true);
+    while (out.length < width) {
+      out.add('');
+    }
+    if (out.length > width) {
+      out.removeRange(width, out.length);
+    }
+    return out;
   }
 
   bool _isTableDelimiterRow(String line) {
