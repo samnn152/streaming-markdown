@@ -1,3 +1,9 @@
+## 0.1.1
+
+- Vendor only required tree-sitter runtime and tree-sitter-markdown parser sources.
+- Remove nested git metadata from bundled `packages/tree-sitter*` directories.
+- Replace gitlink package entries with tracked vendored source files.
+
 ## 0.1.0
 
 - Prepare package metadata for pub.dev publishing.
