@@ -150,13 +150,17 @@ mixin _StreamingMarkdownTextParsing {
     return match.group(2)!.trim();
   }
 
-  _ParsedTable? _parseMarkdownTable(String raw) {
+  _ParsedTable? _parseMarkdownTable(
+    String raw, {
+    bool allowLooseWithoutDelimiter = false,
+    int minLooseRowsWithoutDelimiter = 1,
+  }) {
     final List<String> lines = raw
         .split('\n')
         .map((String line) => line.trimRight())
         .where((String line) => line.isNotEmpty)
         .toList(growable: false);
-    if (lines.length < 2) {
+    if (lines.length < 2 && !allowLooseWithoutDelimiter) {
       return null;
     }
 
@@ -167,11 +171,41 @@ mixin _StreamingMarkdownTextParsing {
         break;
       }
     }
-    if (delimiterIndex <= 0) {
-      return null;
+    if (delimiterIndex < 0) {
+      if (!allowLooseWithoutDelimiter) {
+        return null;
+      }
+
+      final List<List<String>> rows = lines
+          .map(_splitTableRow)
+          .where((List<String> row) => row.isNotEmpty)
+          .toList(growable: false);
+      if (rows.length < minLooseRowsWithoutDelimiter || rows.isEmpty) {
+        return null;
+      }
+
+      int width = 0;
+      for (final List<String> row in rows) {
+        if (row.length > width) {
+          width = row.length;
+        }
+      }
+      if (width <= 0) {
+        return null;
+      }
+
+      final List<String> headers = _fitTableRowToWidth(rows.first, width);
+      final List<List<String>> bodyRows = rows
+          .skip(1)
+          .map((List<String> row) => _fitTableRowToWidth(row, width))
+          .toList(growable: false);
+
+      return _ParsedTable(headers: headers, rows: bodyRows);
     }
 
-    final List<String> rawHeaders = _splitTableRow(lines[delimiterIndex - 1]);
+    final List<String> rawHeaders = delimiterIndex > 0
+        ? _splitTableRow(lines[delimiterIndex - 1])
+        : <String>[];
     final List<String> delimiterCells = _splitTableRow(lines[delimiterIndex]);
     int width = rawHeaders.length > delimiterCells.length
         ? rawHeaders.length
@@ -198,6 +232,7 @@ mixin _StreamingMarkdownTextParsing {
       return null;
     }
 
+    // Keep table stable during streaming even when header row is not ready yet.
     final List<String> headers = _fitTableRowToWidth(rawHeaders, width);
     final List<List<String>> rows = rawRows
         .map((List<String> row) => _fitTableRowToWidth(row, width))

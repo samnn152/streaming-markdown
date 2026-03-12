@@ -35,6 +35,13 @@ class ChatPage extends StatefulWidget {
     this.markdownTokenFadeInRelativeToDelay = 1,
     this.markdownTokenFadeInDuration,
     this.markdownEnableSelection = false,
+    this.markdownTheme = const StreamingMarkdownThemeData(),
+    this.markdownCustomBlockBuilder,
+    this.markdownOnLinkTap,
+    this.embedInScaffold = true,
+    this.showComposer = true,
+    this.appBarTitle = 'Gemini Markdown Demo',
+    this.onSubmitQuestion,
     this.onTokenRenderEnd,
     this.tokenRenderController,
     super.key,
@@ -44,6 +51,13 @@ class ChatPage extends StatefulWidget {
   final double markdownTokenFadeInRelativeToDelay;
   final Duration? markdownTokenFadeInDuration;
   final bool markdownEnableSelection;
+  final StreamingMarkdownThemeData markdownTheme;
+  final StreamingMarkdownBlockBuilder? markdownCustomBlockBuilder;
+  final ValueChanged<String>? markdownOnLinkTap;
+  final bool embedInScaffold;
+  final bool showComposer;
+  final String appBarTitle;
+  final ValueChanged<String>? onSubmitQuestion;
 
   /// Called when UI has rendered all currently available server content.
   /// [forced] is true when completion is triggered by [TokenRenderController].
@@ -132,9 +146,13 @@ class _ChatPageState extends State<ChatPage> {
   }
 
   void _submit() {
-    context.read<ChatBloc>().add(
-      ChatSubmitted(question: _questionController.text),
-    );
+    final String question = _questionController.text;
+    final ValueChanged<String>? onSubmitQuestion = widget.onSubmitQuestion;
+    if (onSubmitQuestion != null) {
+      onSubmitQuestion(question);
+      return;
+    }
+    context.read<ChatBloc>().add(ChatSubmitted(question: question));
   }
 
   // Decision 1: source markdown is always server output.
@@ -356,6 +374,9 @@ class _ChatPageState extends State<ChatPage> {
                 widget.markdownTokenFadeInRelativeToDelay,
             tokenFadeInDuration: widget.markdownTokenFadeInDuration,
             enableTextSelection: widget.markdownEnableSelection,
+            markdownTheme: widget.markdownTheme,
+            customBlockBuilder: widget.markdownCustomBlockBuilder,
+            onLinkTap: widget.markdownOnLinkTap,
           );
         } else if (_displayedMarkdown.isNotEmpty) {
           answerArea = SingleChildScrollView(
@@ -368,17 +389,16 @@ class _ChatPageState extends State<ChatPage> {
           answerArea = const Center(child: Text('Chưa có câu trả lời.'));
         }
 
-        return Scaffold(
-          appBar: AppBar(title: const Text('Gemini Markdown Demo')),
-          body: SafeArea(
-            child: LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints constraints) {
-                final double tokenPanelHeight = (constraints.maxHeight / 6)
-                    .clamp(90, 170)
-                    .toDouble();
+        final Widget body = SafeArea(
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final double tokenPanelHeight = (constraints.maxHeight / 6)
+                  .clamp(90, 170)
+                  .toDouble();
 
-                return Column(
-                  children: [
+              return Column(
+                children: [
+                  if (widget.showComposer)
                     Padding(
                       padding: const EdgeInsets.all(12),
                       child: Row(
@@ -411,90 +431,94 @@ class _ChatPageState extends State<ChatPage> {
                         ],
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text(
-                          state.status,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        state.status,
+                        style: Theme.of(context).textTheme.bodySmall,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    const Divider(height: 1),
-                    Expanded(child: answerArea),
-                    const Divider(height: 1),
-                    SizedBox(
-                      height: tokenPanelHeight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              child: Text(
-                                'Streaming Tokens (${_displayedTokens.length}/$_sourceTokenCount)',
-                                style: Theme.of(context).textTheme.bodySmall,
-                              ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(height: 1),
+                  Expanded(child: answerArea),
+                  const Divider(height: 1),
+                  SizedBox(
+                    height: tokenPanelHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            child: Text(
+                              'Streaming Tokens (${_displayedTokens.length}/$_sourceTokenCount)',
+                              style: Theme.of(context).textTheme.bodySmall,
                             ),
-                            const SizedBox(height: 6),
-                            Expanded(
-                              child: _displayedTokens.isEmpty
-                                  ? const Center(
-                                      child: Text('Chưa có token nào.'),
-                                    )
-                                  : ListView.separated(
-                                      controller: _tokenScrollController,
-                                      scrollDirection: Axis.horizontal,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 8,
-                                      ),
-                                      itemCount: _displayedTokens.length,
-                                      separatorBuilder: (_, _) =>
-                                          const SizedBox(width: 8),
-                                      itemBuilder:
-                                          (BuildContext context, int index) {
-                                            final String token =
-                                                _displayedTokens[index];
-                                            return DecoratedBox(
-                                              decoration: BoxDecoration(
-                                                color: Theme.of(context)
-                                                    .colorScheme
-                                                    .surfaceContainerHighest,
-                                                borderRadius:
-                                                    BorderRadius.circular(10),
-                                              ),
-                                              child: Padding(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 12,
-                                                      vertical: 8,
-                                                    ),
-                                                child: Text(
-                                                  token,
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            );
-                                          },
+                          ),
+                          const SizedBox(height: 6),
+                          Expanded(
+                            child: _displayedTokens.isEmpty
+                                ? const Center(
+                                    child: Text('Chưa có token nào.'),
+                                  )
+                                : ListView.separated(
+                                    controller: _tokenScrollController,
+                                    scrollDirection: Axis.horizontal,
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 8,
                                     ),
-                            ),
-                          ],
-                        ),
+                                    itemCount: _displayedTokens.length,
+                                    separatorBuilder: (_, _) =>
+                                        const SizedBox(width: 8),
+                                    itemBuilder:
+                                        (BuildContext context, int index) {
+                                          final String token =
+                                              _displayedTokens[index];
+                                          return DecoratedBox(
+                                            decoration: BoxDecoration(
+                                              color: Theme.of(context)
+                                                  .colorScheme
+                                                  .surfaceContainerHighest,
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                            child: Padding(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 12,
+                                                    vertical: 8,
+                                                  ),
+                                              child: Text(
+                                                token,
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                  ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                );
-              },
-            ),
+                  ),
+                ],
+              );
+            },
           ),
+        );
+
+        if (!widget.embedInScaffold) {
+          return body;
+        }
+        return Scaffold(
+          appBar: AppBar(title: Text(widget.appBarTitle)),
+          body: body,
         );
       },
     );

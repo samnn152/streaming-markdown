@@ -8,8 +8,86 @@ import 'markdown_render_node.dart';
 
 part 'streaming_markdown_render_text_parsing.dart';
 
+typedef StreamingMarkdownBlockBuilder =
+    Widget? Function(
+      BuildContext context,
+      StreamingMarkdownBlockBuildContext block,
+    );
+
+final class StreamingMarkdownBlockBuildContext {
+  const StreamingMarkdownBlockBuildContext({
+    required this.node,
+    required this.linkReferences,
+    required this.defaultWidget,
+  });
+
+  final MarkdownRenderNode node;
+  final Map<String, String> linkReferences;
+  final Widget defaultWidget;
+}
+
+final class StreamingMarkdownThemeData {
+  const StreamingMarkdownThemeData({
+    this.blockSpacing = 12,
+    this.paragraphTextStyle,
+    this.heading1TextStyle,
+    this.heading2TextStyle,
+    this.heading3TextStyle,
+    this.heading4TextStyle,
+    this.heading5TextStyle,
+    this.heading6TextStyle,
+    this.linkTextStyle,
+    this.inlineCodeTextStyle,
+    this.inlineCodeBackgroundColor,
+    this.codeBlockBackgroundColor,
+    this.codeBlockHeaderBackgroundColor,
+    this.codeBlockLanguageTextStyle,
+    this.codeBlockTextStyle,
+    this.quoteBackgroundColor,
+    this.metadataBackgroundColor,
+    this.metadataBorderColor,
+    this.metadataTextStyle,
+    this.tableBorderColor,
+    this.tableHeaderBackgroundColor,
+    this.thematicBreakColor,
+    this.imageErrorBackgroundColor,
+    this.imageErrorTextStyle,
+    this.selectionColor,
+  });
+
+  final double blockSpacing;
+  final TextStyle? paragraphTextStyle;
+  final TextStyle? heading1TextStyle;
+  final TextStyle? heading2TextStyle;
+  final TextStyle? heading3TextStyle;
+  final TextStyle? heading4TextStyle;
+  final TextStyle? heading5TextStyle;
+  final TextStyle? heading6TextStyle;
+  final TextStyle? linkTextStyle;
+  final TextStyle? inlineCodeTextStyle;
+  final Color? inlineCodeBackgroundColor;
+  final Color? codeBlockBackgroundColor;
+  final Color? codeBlockHeaderBackgroundColor;
+  final TextStyle? codeBlockLanguageTextStyle;
+  final TextStyle? codeBlockTextStyle;
+  final Color? quoteBackgroundColor;
+  final Color? metadataBackgroundColor;
+  final Color? metadataBorderColor;
+  final TextStyle? metadataTextStyle;
+  final Color? tableBorderColor;
+  final Color? tableHeaderBackgroundColor;
+  final Color? thematicBreakColor;
+  final Color? imageErrorBackgroundColor;
+  final TextStyle? imageErrorTextStyle;
+  final Color? selectionColor;
+}
+
 class StreamingMarkdownRenderView extends StatelessWidget
     with _StreamingMarkdownTextParsing {
+  static final Map<String, _ParsedTable> _tableSnapshotCache =
+      <String, _ParsedTable>{};
+  static const int _tableSnapshotCacheLimit = 256;
+
   const StreamingMarkdownRenderView({
     super.key,
     required this.nodes,
@@ -22,6 +100,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
     this.tokenFadeInCurve = Curves.easeOut,
     this.debugTokenHighlight = false,
     this.enableTextSelection = false,
+    this.markdownTheme = const StreamingMarkdownThemeData(),
+    this.customBlockBuilder,
+    this.onLinkTap,
   });
 
   final List<MarkdownRenderNode> nodes;
@@ -34,6 +115,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
   final Curve tokenFadeInCurve;
   final bool debugTokenHighlight;
   final bool enableTextSelection;
+  final StreamingMarkdownThemeData markdownTheme;
+  final StreamingMarkdownBlockBuilder? customBlockBuilder;
+  final ValueChanged<String>? onLinkTap;
 
   Duration _resolvedTokenFadeInDuration() {
     final Duration? absolute = tokenFadeInDuration;
@@ -60,6 +144,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
 
     final Map<String, String> linkReferences = _extractLinkReferences(nodes);
     final String refsDigest = _linkReferencesDigest(linkReferences);
+    final String renderConfigDigest = _renderConfigDigest(context);
 
     final Widget content = SingleChildScrollView(
       padding: padding,
@@ -69,12 +154,17 @@ class StreamingMarkdownRenderView extends StatelessWidget
           for (int i = 0; i < blocks.length; i++) ...[
             _BlockRenderHost(
               key: ValueKey<String>(_blockIdentity(blocks[i])),
-              signature: _blockSignature(blocks[i], refsDigest),
+              signature: _blockSignature(
+                blocks[i],
+                refsDigest,
+                renderConfigDigest,
+              ),
               node: blocks[i],
               linkReferences: linkReferences,
               builder: _buildRenderedBlockWithRefs,
             ),
-            if (i < blocks.length - 1) const SizedBox(height: 12),
+            if (i < blocks.length - 1)
+              SizedBox(height: markdownTheme.blockSpacing),
           ],
         ],
       ),
@@ -112,12 +202,15 @@ class StreamingMarkdownRenderView extends StatelessWidget
         }
         return a.depth.compareTo(b.depth);
       });
+    final List<MarkdownRenderNode> normalized = _mergeOrphanTableFragments(
+      sorted,
+    );
 
     final Set<String> seenSpans = <String>{};
     final List<MarkdownRenderNode> out = <MarkdownRenderNode>[];
     MarkdownRenderNode? lastContainer;
 
-    for (final MarkdownRenderNode node in sorted) {
+    for (final MarkdownRenderNode node in normalized) {
       final String spanKey = '${node.startByte}:${node.endByte}:${node.type}';
       if (!seenSpans.add(spanKey)) {
         continue;
@@ -142,6 +235,134 @@ class StreamingMarkdownRenderView extends StatelessWidget
     return out;
   }
 
+  List<MarkdownRenderNode> _mergeOrphanTableFragments(
+    List<MarkdownRenderNode> sorted,
+  ) {
+    final List<MarkdownRenderNode> out = <MarkdownRenderNode>[];
+    int i = 0;
+    while (i < sorted.length) {
+      final MarkdownRenderNode node = sorted[i];
+      if (!_isTableFragmentNode(node.type)) {
+        out.add(node);
+        i += 1;
+        continue;
+      }
+      if (_isTableFragmentCoveredByContainer(node, sorted)) {
+        i += 1;
+        continue;
+      }
+
+      final List<MarkdownRenderNode> fragments = <MarkdownRenderNode>[node];
+      int j = i + 1;
+      while (j < sorted.length) {
+        final MarkdownRenderNode candidate = sorted[j];
+        if (!_isTableFragmentNode(candidate.type) ||
+            _isTableFragmentCoveredByContainer(candidate, sorted)) {
+          break;
+        }
+        final MarkdownRenderNode previous = fragments.last;
+        if (candidate.startRow > previous.endRow + 1) {
+          break;
+        }
+        fragments.add(candidate);
+        j += 1;
+      }
+
+      final MarkdownRenderNode synthesized = _synthesizeTableNodeFromFragments(
+        fragments,
+      );
+      final _ParsedTable? parsed = _parseMarkdownTable(
+        _normalizedRaw(synthesized.raw),
+        allowLooseWithoutDelimiter: true,
+        minLooseRowsWithoutDelimiter: 2,
+      );
+      if (parsed == null) {
+        out.add(node);
+        i += 1;
+        continue;
+      }
+
+      out.add(synthesized);
+      i = j;
+    }
+    return out;
+  }
+
+  MarkdownRenderNode _synthesizeTableNodeFromFragments(
+    List<MarkdownRenderNode> fragments,
+  ) {
+    int startByte = fragments.first.startByte;
+    int endByte = fragments.first.endByte;
+    int startRow = fragments.first.startRow;
+    int endRow = fragments.first.endRow;
+    int depth = fragments.first.depth;
+    final StringBuffer raw = StringBuffer();
+    for (int i = 0; i < fragments.length; i++) {
+      final MarkdownRenderNode fragment = fragments[i];
+      if (fragment.startByte < startByte) {
+        startByte = fragment.startByte;
+      }
+      if (fragment.endByte > endByte) {
+        endByte = fragment.endByte;
+      }
+      if (fragment.startRow < startRow) {
+        startRow = fragment.startRow;
+      }
+      if (fragment.endRow > endRow) {
+        endRow = fragment.endRow;
+      }
+      if (fragment.depth < depth) {
+        depth = fragment.depth;
+      }
+
+      final String line = _normalizedRaw(fragment.raw).trim();
+      if (line.isNotEmpty) {
+        if (raw.isNotEmpty) {
+          raw.writeln();
+        }
+        raw.write(line);
+      }
+    }
+
+    return MarkdownRenderNode(
+      type: 'pipe_table',
+      depth: depth,
+      startByte: startByte,
+      endByte: endByte,
+      startRow: startRow,
+      endRow: endRow,
+      raw: raw.toString(),
+      content: raw.toString(),
+    );
+  }
+
+  bool _isTableFragmentCoveredByContainer(
+    MarkdownRenderNode node,
+    List<MarkdownRenderNode> all,
+  ) {
+    for (final MarkdownRenderNode candidate in all) {
+      if (!_isTableContainerNode(candidate.type)) {
+        continue;
+      }
+      if (candidate.startByte <= node.startByte &&
+          candidate.endByte >= node.endByte &&
+          candidate.depth <= node.depth) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isTableContainerNode(String type) {
+    return type == 'pipe_table' || type == 'table';
+  }
+
+  bool _isTableFragmentNode(String type) {
+    return type == 'pipe_table_header' ||
+        type == 'pipe_table_row' ||
+        type == 'pipe_table_delimiter_row';
+  }
+
   bool _isRenderableBlockNode(String type) {
     switch (type) {
       case 'atx_heading':
@@ -155,6 +376,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
       case 'html_block':
       case 'pipe_table':
       case 'table':
+      case 'pipe_table_header':
+      case 'pipe_table_row':
+      case 'pipe_table_delimiter_row':
       case 'footnote_definition':
       case 'link_reference_definition':
       case 'front_matter':
@@ -179,8 +403,57 @@ class StreamingMarkdownRenderView extends StatelessWidget
     return '${node.type}:${node.startByte}:${node.depth}';
   }
 
-  String _blockSignature(MarkdownRenderNode node, String refsDigest) {
-    return '${node.type}:${node.startByte}:${node.endByte}:${node.startRow}:${node.endRow}:${node.raw.hashCode}:$refsDigest';
+  String _tableSnapshotKey(MarkdownRenderNode node) {
+    return '${node.startByte}:${node.startRow}:${node.depth}';
+  }
+
+  void _rememberTableSnapshot(MarkdownRenderNode node, _ParsedTable table) {
+    final String key = _tableSnapshotKey(node);
+    _tableSnapshotCache[key] = table;
+    if (_tableSnapshotCache.length <= _tableSnapshotCacheLimit) {
+      return;
+    }
+    final String firstKey = _tableSnapshotCache.keys.first;
+    _tableSnapshotCache.remove(firstKey);
+  }
+
+  _ParsedTable? _readTableSnapshot(MarkdownRenderNode node) {
+    return _tableSnapshotCache[_tableSnapshotKey(node)];
+  }
+
+  String _blockSignature(
+    MarkdownRenderNode node,
+    String refsDigest,
+    String renderConfigDigest,
+  ) {
+    return '${node.type}:${node.startByte}:${node.endByte}:${node.startRow}:${node.endRow}:${node.raw.hashCode}:$refsDigest:$renderConfigDigest';
+  }
+
+  String _renderConfigDigest(BuildContext context) {
+    final Duration resolvedFade = _resolvedTokenFadeInDuration();
+    final StringBuffer buffer = StringBuffer()
+      ..write(tokenArrivalDelay.inMicroseconds)
+      ..write(':')
+      ..write(resolvedFade.inMicroseconds)
+      ..write(':')
+      ..write(tokenFadeInCurve)
+      ..write(':')
+      ..write(allowUnclosedInlineDelimiters)
+      ..write(':')
+      ..write(debugTokenHighlight)
+      ..write(':')
+      ..write(enableTextSelection)
+      ..write(':')
+      ..write(padding.hashCode)
+      ..write(':')
+      ..write(markdownTheme.hashCode)
+      ..write(':')
+      ..write(customBlockBuilder.hashCode)
+      ..write(':')
+      ..write(onLinkTap.hashCode)
+      ..write(':')
+      ..write(Theme.of(context).hashCode);
+    return buffer.toString().hashCode.toString();
   }
 
   String _linkReferencesDigest(Map<String, String> linkReferences) {
@@ -208,7 +481,24 @@ class StreamingMarkdownRenderView extends StatelessWidget
     MarkdownRenderNode node,
     Map<String, String> linkReferences,
   ) {
-    return _buildRenderedBlock(context, node, linkReferences: linkReferences);
+    final Widget defaultWidget = _buildRenderedBlock(
+      context,
+      node,
+      linkReferences: linkReferences,
+    );
+    final StreamingMarkdownBlockBuilder? builder = customBlockBuilder;
+    if (builder == null) {
+      return defaultWidget;
+    }
+    return builder(
+          context,
+          StreamingMarkdownBlockBuildContext(
+            node: node,
+            linkReferences: linkReferences,
+            defaultWidget: defaultWidget,
+          ),
+        ) ??
+        defaultWidget;
   }
 
   Widget _buildRenderedBlock(
@@ -225,9 +515,15 @@ class StreamingMarkdownRenderView extends StatelessWidget
           linkReferences: linkReferences,
         );
       case 'paragraph':
-        final _ParsedTable? paragraphTable = _parseMarkdownTable(
-          _normalizedRaw(node.raw),
-        );
+        final String normalizedRaw = _normalizedRaw(node.raw);
+        _ParsedTable? paragraphTable = _parseMarkdownTable(normalizedRaw);
+        if (paragraphTable == null && normalizedRaw.contains('\n')) {
+          paragraphTable = _parseMarkdownTable(
+            normalizedRaw,
+            allowLooseWithoutDelimiter: true,
+            minLooseRowsWithoutDelimiter: 2,
+          );
+        }
         if (paragraphTable != null) {
           return _buildTableWidget(
             context,
@@ -249,9 +545,16 @@ class StreamingMarkdownRenderView extends StatelessWidget
       case 'indented_code_block':
         return _buildCodeBlock(node);
       case 'thematic_break':
-        return const Divider(height: 1, thickness: 1, color: Color(0xFF30363D));
+        return Divider(
+          height: 1,
+          thickness: 1,
+          color: markdownTheme.thematicBreakColor ?? const Color(0xFF30363D),
+        );
       case 'pipe_table':
       case 'table':
+      case 'pipe_table_header':
+      case 'pipe_table_row':
+      case 'pipe_table_delimiter_row':
         return _buildTableBlock(context, node, linkReferences: linkReferences);
       case 'html_block':
         return _HtmlBlockCard(html: _normalizedRaw(node.raw));
@@ -288,31 +591,37 @@ class StreamingMarkdownRenderView extends StatelessWidget
     switch (level) {
       case 1:
         style =
+            markdownTheme.heading1TextStyle ??
             textTheme.headlineMedium ??
             const TextStyle(fontSize: 28, fontWeight: FontWeight.w700);
         break;
       case 2:
         style =
+            markdownTheme.heading2TextStyle ??
             textTheme.headlineSmall ??
             const TextStyle(fontSize: 24, fontWeight: FontWeight.w700);
         break;
       case 3:
         style =
+            markdownTheme.heading3TextStyle ??
             textTheme.titleLarge ??
             const TextStyle(fontSize: 20, fontWeight: FontWeight.w700);
         break;
       case 4:
         style =
+            markdownTheme.heading4TextStyle ??
             textTheme.titleMedium ??
             const TextStyle(fontSize: 18, fontWeight: FontWeight.w700);
         break;
       case 5:
         style =
+            markdownTheme.heading5TextStyle ??
             textTheme.titleSmall ??
             const TextStyle(fontSize: 16, fontWeight: FontWeight.w700);
         break;
       default:
         style =
+            markdownTheme.heading6TextStyle ??
             textTheme.bodyLarge ??
             const TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
         break;
@@ -343,7 +652,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
     return _buildInlineMarkdown(
       context,
       text,
-      baseStyle: Theme.of(context).textTheme.bodyLarge,
+      baseStyle:
+          markdownTheme.paragraphTextStyle ??
+          Theme.of(context).textTheme.bodyLarge,
       linkReferences: linkReferences,
     );
   }
@@ -363,7 +674,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
     }
 
     final TextStyle baseStyle =
-        Theme.of(context).textTheme.bodyLarge ?? const TextStyle(fontSize: 16);
+        markdownTheme.paragraphTextStyle ??
+        Theme.of(context).textTheme.bodyLarge ??
+        const TextStyle(fontSize: 16);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -414,7 +727,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
         border: Border(left: BorderSide(color: calloutColor, width: 3)),
-        color: const Color(0xFF161B22),
+        color: markdownTheme.quoteBackgroundColor ?? const Color(0xFF161B22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -438,7 +751,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
           _buildInlineMarkdown(
             context,
             callout?.body ?? text,
-            baseStyle: Theme.of(context).textTheme.bodyLarge,
+            baseStyle:
+                markdownTheme.paragraphTextStyle ??
+                Theme.of(context).textTheme.bodyLarge,
             linkReferences: linkReferences,
           ),
         ],
@@ -456,7 +771,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF0D1117),
+        color:
+            markdownTheme.codeBlockBackgroundColor ?? const Color(0xFF0D1117),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -466,29 +782,37 @@ class StreamingMarkdownRenderView extends StatelessWidget
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: const BoxDecoration(
-                color: Color(0xFF161B22),
-                borderRadius: BorderRadius.vertical(top: Radius.circular(8)),
+              decoration: BoxDecoration(
+                color:
+                    markdownTheme.codeBlockHeaderBackgroundColor ??
+                    const Color(0xFF161B22),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(8),
+                ),
               ),
               child: Text(
                 language,
-                style: const TextStyle(
-                  color: Color(0xFF8B949E),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+                style:
+                    markdownTheme.codeBlockLanguageTextStyle ??
+                    const TextStyle(
+                      color: Color(0xFF8B949E),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
             ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: SelectableText(
               code,
-              style: const TextStyle(
-                color: Color(0xFFE6EDF3),
-                fontFamily: 'monospace',
-                fontSize: 13,
-                height: 1.4,
-              ),
+              style:
+                  markdownTheme.codeBlockTextStyle ??
+                  const TextStyle(
+                    color: Color(0xFFE6EDF3),
+                    fontFamily: 'monospace',
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
             ),
           ),
         ],
@@ -501,16 +825,30 @@ class StreamingMarkdownRenderView extends StatelessWidget
     MarkdownRenderNode node, {
     required Map<String, String> linkReferences,
   }) {
-    final _ParsedTable? table = _parseMarkdownTable(_normalizedRaw(node.raw));
-    if (table == null) {
-      return _buildParagraphBlock(
+    final _ParsedTable? parsed = _parseMarkdownTable(
+      _normalizedRaw(node.raw),
+      allowLooseWithoutDelimiter: true,
+      minLooseRowsWithoutDelimiter: 2,
+    );
+    if (parsed != null) {
+      _rememberTableSnapshot(node, parsed);
+      return _buildTableWidget(context, parsed, linkReferences: linkReferences);
+    }
+
+    final _ParsedTable? snapshot = _readTableSnapshot(node);
+    if (snapshot != null) {
+      return _buildTableWidget(
         context,
-        _contentOrRaw(node),
+        snapshot,
         linkReferences: linkReferences,
       );
     }
 
-    return _buildTableWidget(context, table, linkReferences: linkReferences);
+    return _buildParagraphBlock(
+      context,
+      _contentOrRaw(node),
+      linkReferences: linkReferences,
+    );
   }
 
   Widget _buildTableWidget(
@@ -523,10 +861,16 @@ class StreamingMarkdownRenderView extends StatelessWidget
       child: Table(
         defaultColumnWidth: const IntrinsicColumnWidth(),
         defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-        border: TableBorder.all(color: const Color(0xFF30363D)),
+        border: TableBorder.all(
+          color: markdownTheme.tableBorderColor ?? const Color(0xFF30363D),
+        ),
         children: <TableRow>[
           TableRow(
-            decoration: const BoxDecoration(color: Color(0xFF21262D)),
+            decoration: BoxDecoration(
+              color:
+                  markdownTheme.tableHeaderBackgroundColor ??
+                  const Color(0xFF21262D),
+            ),
             children: table.headers
                 .map(
                   (String cell) => Padding(
@@ -582,18 +926,22 @@ class StreamingMarkdownRenderView extends StatelessWidget
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF161B22),
+        color: markdownTheme.metadataBackgroundColor ?? const Color(0xFF161B22),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFF30363D)),
+        border: Border.all(
+          color: markdownTheme.metadataBorderColor ?? const Color(0xFF30363D),
+        ),
       ),
       child: _buildInlineMarkdown(
         context,
         text,
-        baseStyle: const TextStyle(
-          color: Color(0xFFF0F6FC),
-          fontFamily: 'monospace',
-          fontSize: 12,
-        ),
+        baseStyle:
+            markdownTheme.metadataTextStyle ??
+            const TextStyle(
+              color: Color(0xFFF0F6FC),
+              fontFamily: 'monospace',
+              fontSize: 12,
+            ),
         linkReferences: linkReferences,
       ),
     );
@@ -649,11 +997,15 @@ class StreamingMarkdownRenderView extends StatelessWidget
             errorBuilder: (_, _, _) => Container(
               height: 120,
               width: double.infinity,
-              color: const Color(0xFF161B22),
+              color:
+                  markdownTheme.imageErrorBackgroundColor ??
+                  const Color(0xFF161B22),
               alignment: Alignment.center,
-              child: const Text(
+              child: Text(
                 'Image unavailable',
-                style: TextStyle(color: Color(0xFFF0F6FC)),
+                style:
+                    markdownTheme.imageErrorTextStyle ??
+                    const TextStyle(color: Color(0xFFF0F6FC)),
               ),
             ),
           ),
@@ -701,6 +1053,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
 
     final TextStyle resolvedStyle =
         baseStyle ??
+        markdownTheme.paragraphTextStyle ??
         Theme.of(context).textTheme.bodyLarge ??
         const TextStyle(fontSize: 16);
     final List<_InlineToken> tokens = _parseInlineTokens(
@@ -739,6 +1092,13 @@ class StreamingMarkdownRenderView extends StatelessWidget
       }
 
       if (token.style.code) {
+        final TextStyle inlineCodeStyle =
+            markdownTheme.inlineCodeTextStyle ??
+            const TextStyle(
+              color: Color(0xFFE6EDF3),
+              fontFamily: 'monospace',
+              fontSize: 12,
+            );
         spans.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
@@ -746,17 +1106,12 @@ class StreamingMarkdownRenderView extends StatelessWidget
               margin: const EdgeInsets.symmetric(horizontal: 2),
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
-                color: const Color(0xFF21262D),
+                color:
+                    markdownTheme.inlineCodeBackgroundColor ??
+                    const Color(0xFF21262D),
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: Text(
-                token.text,
-                style: const TextStyle(
-                  color: Color(0xFFE6EDF3),
-                  fontFamily: 'monospace',
-                  fontSize: 12,
-                ),
-              ),
+              child: Text(token.text, style: inlineCodeStyle),
             ),
           ),
         );
@@ -795,9 +1150,12 @@ class StreamingMarkdownRenderView extends StatelessWidget
         style = style.copyWith(decoration: TextDecoration.lineThrough);
       }
       if (token.linkUrl != null && token.linkUrl!.isNotEmpty) {
-        style = style.copyWith(
-          color: const Color(0xFF58A6FF),
-          decoration: TextDecoration.underline,
+        style = style.merge(
+          markdownTheme.linkTextStyle ??
+              const TextStyle(
+                color: Color(0xFF58A6FF),
+                decoration: TextDecoration.underline,
+              ),
         );
         visualTokenIndex = _appendTokenizedTextSpans(
           spans: spans,
@@ -891,7 +1249,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
             textDirection: TextDirection.ltr,
             textScaler: MediaQuery.textScalerOf(context),
             selectionRegistrar: SelectionContainer.maybeOf(context),
-            selectionColor: const Color(0x6658A6FF),
+            selectionColor:
+                markdownTheme.selectionColor ?? const Color(0x6658A6FF),
             text: TextSpan(style: resolvedStyle, children: selectableSpans),
           ),
         ),
@@ -986,6 +1345,11 @@ class StreamingMarkdownRenderView extends StatelessWidget
   }
 
   void _onLinkPressed(BuildContext context, String url) {
+    final ValueChanged<String>? callback = onLinkTap;
+    if (callback != null) {
+      callback(url);
+      return;
+    }
     Clipboard.setData(ClipboardData(text: url));
     ScaffoldMessenger.of(
       context,
@@ -1000,7 +1364,7 @@ typedef _BlockBuilder =
       Map<String, String> linkReferences,
     );
 
-class _BlockRenderHost extends StatelessWidget {
+class _BlockRenderHost extends StatefulWidget {
   const _BlockRenderHost({
     super.key,
     required this.signature,
@@ -1015,8 +1379,34 @@ class _BlockRenderHost extends StatelessWidget {
   final _BlockBuilder builder;
 
   @override
+  State<_BlockRenderHost> createState() => _BlockRenderHostState();
+}
+
+class _BlockRenderHostState extends State<_BlockRenderHost> {
+  String? _cachedSignature;
+  Widget? _cachedChild;
+
+  @override
+  void didUpdateWidget(covariant _BlockRenderHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.builder != widget.builder ||
+        oldWidget.signature != widget.signature) {
+      _cachedSignature = null;
+      _cachedChild = null;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return RepaintBoundary(child: builder(context, node, linkReferences));
+    if (_cachedChild == null || _cachedSignature != widget.signature) {
+      _cachedChild = widget.builder(
+        context,
+        widget.node,
+        widget.linkReferences,
+      );
+      _cachedSignature = widget.signature;
+    }
+    return RepaintBoundary(child: _cachedChild!);
   }
 }
 
