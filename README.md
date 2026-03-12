@@ -1,37 +1,99 @@
 # streaming_markdown
 
-Flutter FFI plugin exposing `tree-sitter-markdown` and append-friendly rope buffers.
+This package is vibe-coded and currently under active construction.
 
-## What this plugin provides
+API surface and behavior may change while streaming and rendering features are being stabilized.
 
-- Native build integration for Android, iOS, macOS, Linux, and Windows.
-- Dart API `markdownLanguage()` returning an opaque pointer to `tree_sitter_markdown()`.
-- `RopeString` in Dart for efficient append + substring without rebuilding full text.
-- `NativeRopeBuffer` backed by C++ for future high-throughput FFI streaming pipelines.
-- `RopeMarkdownParser` and `StreamingMarkdownParser` returning Markdown AST nodes in Dart.
-- `TreeSitterMarkdownParser` returning full Tree-sitter syntax tree JSON mapped to Dart nodes.
+## Overview
 
-## Usage
+`streaming_markdown` is a Flutter FFI package for markdown streaming workflows. It exposes:
+
+- append-friendly rope buffers (`RopeString`, `NativeRopeBuffer`)
+- native tree-sitter markdown parsers (`TreeSitterMarkdownParser`)
+- native incremental parser sessions (`NativeIncrementalMarkdownParser`)
+- isolate-based parsing for UI pipelines (`StreamingMarkdownParseWorker`)
+- a streaming-friendly Flutter renderer (`StreamingMarkdownRenderView`)
+
+## Installation
+
+Add dependency:
+
+```yaml
+dependencies:
+  streaming_markdown:
+    git:
+      url: <your_repo_url>
+```
+
+Then run:
+
+```bash
+flutter pub get
+```
+
+## Quick Start
 
 ```dart
 import 'package:streaming_markdown/streaming_markdown.dart';
 
-final rope = RopeString();
-rope.append('Hello');
-rope.append(' world');
-print(rope.substring(0, 5)); // Hello
+Future<void> parseIncrementally() async {
+  final worker = StreamingMarkdownParseWorker();
+  await worker.start();
 
-final nativeRope = NativeRopeBuffer.create();
-nativeRope.append('chunk-1');
-nativeRope.append('chunk-2');
-final tail = nativeRope.substring(7); // chunk-2
-nativeRope.dispose();
+  await worker.request(
+    op: 'set',
+    text: '# Hello\n\n| A | B |\n| - | - |\n',
+    includeNodes: true,
+  );
+
+  final result = await worker.request(
+    op: 'append',
+    text: '| 1 | 2 |\n',
+    includeNodes: true,
+  );
+
+  // Use result.renderNodes in StreamingMarkdownRenderView.
+  print(result.renderNodes.length);
+
+  worker.dispose();
+}
 ```
 
-For `NativeRopeBuffer`, substring indices are UTF-8 byte offsets.
+## Flutter Rendering
 
-## Flutter Example
+```dart
+StreamingMarkdownRenderView(
+  nodes: renderNodes,
+  tokenArrivalDelay: const Duration(milliseconds: 50),
+  tokenFadeInDuration: const Duration(milliseconds: 300),
+  enableTextSelection: true,
+)
+```
 
-A visual Flutter demo is available in [example/README.md](example/README.md).
-It loads GitHub's `cmark-gfm` spec file and lets you append markdown chunks,
-re-parse, and inspect parsed node structures on-screen.
+## Public API Documentation
+
+Public API docs are written as DartDoc comments directly in source files:
+
+- `lib/streaming_markdown.dart` (entrypoint and export guide)
+- exported API classes in `lib/src/*`
+
+Use IDE hover/completion docs or `dart doc` to generate HTML docs.
+
+## Example App
+
+See `example/` for a dual-pane chat demo (default theme vs custom theme) with shared question input and streaming markdown rendering.
+
+## tree-sitter-markdown Dependency
+
+This package vendors and depends on `tree-sitter-markdown` sources under `packages/tree-sitter-markdown`.
+
+- Upstream `tree-sitter-markdown` license: MIT
+- Current package (`streaming_markdown`) license: Apache-2.0
+
+The bundled MIT-licensed third-party code remains under MIT terms.
+
+## License
+
+`streaming_markdown` is licensed under Apache License 2.0. See [LICENSE](LICENSE).
+
+Third-party license details are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

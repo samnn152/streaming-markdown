@@ -5,6 +5,10 @@ import 'package:ffi/ffi.dart';
 
 import 'native_symbols.dart';
 
+/// Native incremental markdown parser session.
+///
+/// This parser keeps native parse state so append operations can be processed
+/// incrementally instead of reparsing from scratch.
 final class NativeIncrementalMarkdownParser implements Finalizable {
   static const int _defaultMaxNodes = 0x7fffffff;
   static final NativeFinalizer _finalizer = NativeFinalizer(
@@ -18,6 +22,9 @@ final class NativeIncrementalMarkdownParser implements Finalizable {
     _finalizer.attach(this, _handle, detach: this);
   }
 
+  /// Creates a new incremental parser session.
+  ///
+  /// Throws [StateError] when the native library is unavailable.
   factory NativeIncrementalMarkdownParser.create() {
     if (!isStreamingMarkdownNativeLibraryAvailable) {
       throw StateError('Native streaming_markdown library is unavailable');
@@ -30,6 +37,7 @@ final class NativeIncrementalMarkdownParser implements Finalizable {
     return NativeIncrementalMarkdownParser._(handle);
   }
 
+  /// Replaces the full source text and reparses.
   bool setText(String text) {
     _ensureNotDisposed();
     final Pointer<Utf8> nativeText = text.toNativeUtf8();
@@ -40,6 +48,7 @@ final class NativeIncrementalMarkdownParser implements Finalizable {
     }
   }
 
+  /// Appends a text chunk and reparses incrementally.
   bool appendText(String text) {
     _ensureNotDisposed();
     if (text.isEmpty) {
@@ -53,16 +62,19 @@ final class NativeIncrementalMarkdownParser implements Finalizable {
     }
   }
 
+  /// Returns the current block-node count from native tree-sitter output.
   int blockCount() {
     _ensureNotDisposed();
     return _blockCount(_handle);
   }
 
+  /// Returns how many inline node types have been observed.
   int inlineTypeCount() {
     _ensureNotDisposed();
     return _inlineTypeCount(_handle);
   }
 
+  /// Returns flattened block nodes as decoded JSON maps.
   List<Map<String, Object>> blockNodes({int? maxNodes}) {
     _ensureNotDisposed();
     final int resolvedMaxNodes = maxNodes ?? _defaultMaxNodes;
@@ -100,6 +112,7 @@ final class NativeIncrementalMarkdownParser implements Finalizable {
     }
   }
 
+  /// Disposes the native parser session.
   void dispose() {
     if (_disposed) {
       return;

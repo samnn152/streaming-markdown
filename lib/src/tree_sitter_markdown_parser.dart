@@ -6,21 +6,28 @@ import 'markdown_syntax_tree.dart';
 import 'native_symbols.dart';
 import 'rope_string.dart';
 
+/// Native tree-sitter markdown parser facade.
+///
+/// Produces full [MarkdownSyntaxNode] trees for block or inline grammars.
 final class TreeSitterMarkdownParser {
   const TreeSitterMarkdownParser();
 
+  /// Parses markdown using the block grammar.
   MarkdownSyntaxNode parseBlocks(String markdown) {
     return _parse(markdown, _parseBlocksToJson);
   }
 
+  /// Parses markdown from [rope] using the block grammar.
   MarkdownSyntaxNode parseBlocksFromRope(RopeString rope) {
     return parseBlocks(rope.toString());
   }
 
+  /// Parses markdown using the inline grammar.
   MarkdownSyntaxNode parseInlines(String markdown) {
     return _parse(markdown, _parseInlinesToJson);
   }
 
+  /// Parses markdown from [rope] using the inline grammar.
   MarkdownSyntaxNode parseInlinesFromRope(RopeString rope) {
     return parseInlines(rope.toString());
   }

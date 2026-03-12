@@ -1,12 +1,20 @@
+/// Append-friendly pure-Dart rope string.
+///
+/// Useful for streaming text where repeated concatenation would otherwise
+/// allocate many intermediate strings.
 class RopeString {
   final List<String> _chunks = <String>[];
   final List<int> _prefixCodeUnits = <int>[];
   int _length = 0;
   String? _cache;
 
+  /// Total UTF-16 code-unit length.
   int get length => _length;
+
+  /// Whether the rope has no content.
   bool get isEmpty => _length == 0;
 
+  /// Appends [text] to the end of this rope.
   void append(String text) {
     if (text.isEmpty) return;
     _chunks.add(text);
@@ -15,6 +23,7 @@ class RopeString {
     _cache = null;
   }
 
+  /// Removes all content.
   void clear() {
     _chunks.clear();
     _prefixCodeUnits.clear();
@@ -22,6 +31,7 @@ class RopeString {
     _cache = '';
   }
 
+  /// Returns the substring in `[start, end)`.
   String substring(int start, [int? end]) {
     end ??= _length;
     RangeError.checkValidRange(start, end, _length);
@@ -48,6 +58,7 @@ class RopeString {
     return out.toString();
   }
 
+  /// Returns the UTF-16 code unit at [index].
   int codeUnitAt(int index) {
     RangeError.checkValidIndex(index, this, 'index', _length);
     final int chunkIndex = _lowerBoundPrefix(index + 1);
@@ -57,6 +68,7 @@ class RopeString {
     return _chunks[chunkIndex].codeUnitAt(index - chunkStart);
   }
 
+  /// Returns a single-character string at [index].
   String charAt(int index) => String.fromCharCode(codeUnitAt(index));
 
   @override

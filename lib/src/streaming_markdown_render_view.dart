@@ -8,12 +8,14 @@ import 'markdown_render_node.dart';
 
 part 'streaming_markdown_render_text_parsing.dart';
 
+/// Custom builder hook for overriding a rendered markdown block widget.
 typedef StreamingMarkdownBlockBuilder =
     Widget? Function(
       BuildContext context,
       StreamingMarkdownBlockBuildContext block,
     );
 
+/// Context object passed to [StreamingMarkdownBlockBuilder].
 final class StreamingMarkdownBlockBuildContext {
   const StreamingMarkdownBlockBuildContext({
     required this.node,
@@ -21,11 +23,17 @@ final class StreamingMarkdownBlockBuildContext {
     required this.defaultWidget,
   });
 
+  /// Source render node for this block.
   final MarkdownRenderNode node;
+
+  /// Link reference map extracted from current node list.
   final Map<String, String> linkReferences;
+
+  /// Default widget produced by internal renderer.
   final Widget defaultWidget;
 }
 
+/// Theme/customization data for [StreamingMarkdownRenderView].
 final class StreamingMarkdownThemeData {
   const StreamingMarkdownThemeData({
     this.blockSpacing = 12,
@@ -82,6 +90,12 @@ final class StreamingMarkdownThemeData {
   final Color? selectionColor;
 }
 
+/// Streaming markdown UI renderer.
+///
+/// Input is a list of [MarkdownRenderNode] blocks (typically produced by
+/// [StreamingMarkdownParseWorker]). This widget focuses on real-time streaming
+/// behavior: partial markdown tolerance, token-level fade-in, and optional text
+/// selection support.
 class StreamingMarkdownRenderView extends StatelessWidget
     with _StreamingMarkdownTextParsing {
   static final Map<String, _ParsedTable> _tableSnapshotCache =

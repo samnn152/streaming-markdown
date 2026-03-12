@@ -4,6 +4,10 @@ import 'package:ffi/ffi.dart';
 
 import 'native_symbols.dart';
 
+/// Native C++ rope buffer wrapper.
+///
+/// Use this when you need append-heavy operations with native storage.
+/// Remember to call [dispose] when done.
 final class NativeRopeBuffer implements Finalizable {
   static final NativeFinalizer _finalizer = NativeFinalizer(
     _ropeDestroyPtr.cast(),
@@ -16,6 +20,7 @@ final class NativeRopeBuffer implements Finalizable {
     _finalizer.attach(this, _handle, detach: this);
   }
 
+  /// Creates a new native rope buffer instance.
   factory NativeRopeBuffer.create() {
     final Pointer<Void> handle = _ropeCreate();
     if (handle == nullptr) {
@@ -24,11 +29,13 @@ final class NativeRopeBuffer implements Finalizable {
     return NativeRopeBuffer._(handle);
   }
 
+  /// Total UTF-8 byte length of the current content.
   int get lengthBytes {
     _ensureNotDisposed();
     return _ropeLength(_handle);
   }
 
+  /// Appends [text] to the native rope.
   void append(String text) {
     _ensureNotDisposed();
     if (text.isEmpty) return;
@@ -40,6 +47,9 @@ final class NativeRopeBuffer implements Finalizable {
     }
   }
 
+  /// Returns UTF-8 substring in byte range `[start, end)`.
+  ///
+  /// Offsets are byte offsets, not UTF-16 code-unit offsets.
   String substring(int start, [int? end]) {
     _ensureNotDisposed();
     final int resolvedEnd = end ?? lengthBytes;
@@ -62,11 +72,13 @@ final class NativeRopeBuffer implements Finalizable {
     }
   }
 
+  /// Clears all content from the native rope.
   void clear() {
     _ensureNotDisposed();
     _ropeClear(_handle);
   }
 
+  /// Releases native resources.
   void dispose() {
     if (_disposed) return;
     _disposed = true;

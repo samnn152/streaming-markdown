@@ -8,6 +8,7 @@ import 'native_symbols.dart';
 import 'rope_markdown_parser.dart';
 import 'rope_string.dart';
 
+/// Result returned by [StreamingMarkdownParseWorker.request].
 class StreamingMarkdownParseResult {
   const StreamingMarkdownParseResult({
     required this.basicBlockCount,
@@ -22,18 +23,42 @@ class StreamingMarkdownParseResult {
     required this.renderNodes,
   });
 
+  /// Number of block nodes reported by the parser.
   final int basicBlockCount;
+
+  /// Number of inline node types observed.
   final int inlineTypeCount;
+
+  /// Whether native library parsing was available for this request.
   final bool nativeAvailable;
+
+  /// Parse mode string (for diagnostics only).
   final String mode;
+
+  /// Whether node payloads were included.
   final bool nodesIncluded;
+
+  /// Time spent updating parser state.
   final Duration updateTime;
+
+  /// Time spent generating result statistics and node payloads.
   final Duration statsTime;
+
+  /// End-to-end request time.
   final Duration totalTime;
+
+  /// Visible normalized nodes.
   final List<MarkdownRenderNode> visibleNodes;
+
+  /// Nodes intended for UI rendering.
   final List<MarkdownRenderNode> renderNodes;
 }
 
+/// Isolate-backed markdown parse worker.
+///
+/// Use [request] with:
+/// - `op: 'set'` for full replacement
+/// - `op: 'append'` for streaming append updates
 class StreamingMarkdownParseWorker {
   Isolate? _isolate;
   ReceivePort? _receivePort;
@@ -43,6 +68,7 @@ class StreamingMarkdownParseWorker {
   final Map<int, Completer<Map<String, Object?>>> _pending =
       <int, Completer<Map<String, Object?>>>{};
 
+  /// Starts the background isolate and parser session.
   Future<void> start() async {
     if (_sendPort != null) {
       return;
@@ -69,6 +95,7 @@ class StreamingMarkdownParseWorker {
     _sendPort = await ready.future;
   }
 
+  /// Sends a parse request and awaits normalized results.
   Future<StreamingMarkdownParseResult> request({
     required String op,
     required String text,
@@ -134,6 +161,7 @@ class StreamingMarkdownParseWorker {
     );
   }
 
+  /// Disposes the worker isolate and clears pending requests.
   void dispose() {
     final SendPort? sendPort = _sendPort;
     if (sendPort != null) {

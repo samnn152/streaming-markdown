@@ -135,6 +135,9 @@ class _DualChatShowcasePageState extends State<_DualChatShowcasePage> {
                           final Widget defaultPane = Expanded(
                             child: ChatPage(
                               tokenRenderInterval: const Duration(
+                                milliseconds: 50,
+                              ),
+                              markdownTokenFadeInDuration: const Duration(
                                 milliseconds: 300,
                               ),
                               markdownEnableSelection: true,
@@ -151,6 +154,9 @@ class _DualChatShowcasePageState extends State<_DualChatShowcasePage> {
                               ),
                               child: ChatPage(
                                 tokenRenderInterval: const Duration(
+                                  milliseconds: 50,
+                                ),
+                                markdownTokenFadeInDuration: const Duration(
                                   milliseconds: 300,
                                 ),
                                 markdownEnableSelection: true,
