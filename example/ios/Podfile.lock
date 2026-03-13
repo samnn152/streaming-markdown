@@ -2,27 +2,20 @@ PODS:
   - animated_streaming_markdown (0.0.1):
     - Flutter
   - Flutter (1.0.0)
-  - webview_flutter_wkwebview (0.0.1):
-    - Flutter
-    - FlutterMacOS
 
 DEPENDENCIES:
   - animated_streaming_markdown (from `.symlinks/plugins/animated_streaming_markdown/ios`)
   - Flutter (from `Flutter`)
-  - webview_flutter_wkwebview (from `.symlinks/plugins/webview_flutter_wkwebview/darwin`)
 
 EXTERNAL SOURCES:
   animated_streaming_markdown:
     :path: ".symlinks/plugins/animated_streaming_markdown/ios"
   Flutter:
     :path: Flutter
-  webview_flutter_wkwebview:
-    :path: ".symlinks/plugins/webview_flutter_wkwebview/darwin"
 
 SPEC CHECKSUMS:
   animated_streaming_markdown: 44e885a82d413c41199cd0b793eba17d1e845cc4
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  webview_flutter_wkwebview: 8ebf4fded22593026f7dbff1fbff31ea98573c8d
 
 PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
 

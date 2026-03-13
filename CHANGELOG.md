@@ -1,3 +1,12 @@
+## 0.1.4
+
+- Lower package SDK and Flutter lower-bound requirements.
+- Relax dependency lower bounds (`ffi`, `html`, `flutter_lints`) to support older toolchains where possible.
+- Replace `webview_flutter` HTML block rendering with pure Flutter/DOM rendering for broader platform support.
+- Make HTML block height wrap content instead of using a fixed viewport.
+- Add web-safe conditional exports and non-FFI stubs so importing the package no longer fails on web targets.
+- Clarify package metadata and README that web is not an officially supported platform.
+
 ## 0.1.3
 
 - Hotfix iOS/macOS native build by restoring `tree_sitter/parser.h` in vendored tree-sitter include path.

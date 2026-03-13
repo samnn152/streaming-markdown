@@ -12,17 +12,14 @@
 /// 2. Parse incrementally via [StreamingMarkdownParseWorker] or
 ///    [NativeIncrementalMarkdownParser].
 /// 3. Render [MarkdownRenderNode] blocks via [StreamingMarkdownRenderView].
-library;
-
-import 'dart:ffi';
-
-import 'src/native_symbols.dart';
 
 /// Native UTF-8 rope buffer implementation backed by C++.
-export 'src/native_rope_buffer.dart';
+export 'src/native_rope_buffer_stub.dart'
+    if (dart.library.ffi) 'src/native_rope_buffer.dart';
 
 /// Native library availability and resolved library name for current platform.
-export 'src/native_symbols.dart'
+export 'src/native_symbols_stub.dart'
+    if (dart.library.ffi) 'src/native_symbols.dart'
     show
         isStreamingMarkdownNativeLibraryAvailable,
         streamingMarkdownLibraryName;
@@ -37,7 +34,8 @@ export 'src/markdown_syntax_tree.dart';
 export 'src/markdown_render_node.dart';
 
 /// Native incremental markdown parser session API.
-export 'src/native_incremental_markdown_parser.dart';
+export 'src/native_incremental_markdown_parser_stub.dart'
+    if (dart.library.ffi) 'src/native_incremental_markdown_parser.dart';
 
 /// Pure-Dart rope markdown parser.
 export 'src/rope_markdown_parser.dart';
@@ -46,19 +44,19 @@ export 'src/rope_markdown_parser.dart';
 export 'src/rope_string.dart';
 
 /// Isolate worker wrapper for incremental parsing and render-node extraction.
-export 'src/streaming_markdown_parse_worker.dart';
+export 'src/streaming_markdown_parse_worker_stub.dart'
+    if (dart.library.ffi) 'src/streaming_markdown_parse_worker.dart';
 
 /// Flutter markdown rendering widget with streaming token animation support.
 export 'src/streaming_markdown_render_view.dart';
 
 /// Tree-sitter markdown parser API returning full syntax trees.
-export 'src/tree_sitter_markdown_parser.dart';
+export 'src/tree_sitter_markdown_parser_stub.dart'
+    if (dart.library.ffi) 'src/tree_sitter_markdown_parser.dart';
 
-/// Returns a pointer to the tree-sitter Markdown [TSLanguage].
+/// Native tree-sitter language pointer helpers.
 ///
-/// This pointer can be passed into a tree-sitter parser created via another
-/// Dart FFI wrapper for libtree-sitter.
-Pointer<Void> markdownLanguage() => getMarkdownLanguageNative();
-
-/// Returns a pointer to the tree-sitter Markdown inline [TSLanguage].
-Pointer<Void> markdownInlineLanguage() => getMarkdownInlineLanguageNative();
+/// On non-FFI platforms (for example web), these APIs throw
+/// [UnsupportedError].
+export 'src/native_languages_stub.dart'
+    if (dart.library.ffi) 'src/native_languages_ffi.dart';

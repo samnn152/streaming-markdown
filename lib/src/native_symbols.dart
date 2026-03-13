@@ -7,7 +7,8 @@ DynamicLibrary? _cachedLibrary;
 Object? _libraryLoadError;
 
 DynamicLibrary get streamingMarkdownDylib {
-  if (_cachedLibrary case final DynamicLibrary library) {
+  final DynamicLibrary? library = _cachedLibrary;
+  if (library != null) {
     return library;
   }
   if (_libraryLoadError != null) {
@@ -74,11 +75,11 @@ typedef _NativeGetMarkdownLanguage = Pointer<Void> Function();
 final Pointer<Void> Function() getMarkdownLanguageNative =
     streamingMarkdownDylib
         .lookupFunction<_NativeGetMarkdownLanguage, Pointer<Void> Function()>(
-          'streaming_markdown_tree_sitter_markdown',
-        );
+  'streaming_markdown_tree_sitter_markdown',
+);
 
 final Pointer<Void> Function() getMarkdownInlineLanguageNative =
     streamingMarkdownDylib
         .lookupFunction<_NativeGetMarkdownLanguage, Pointer<Void> Function()>(
-          'streaming_markdown_tree_sitter_markdown_inline',
-        );
+  'streaming_markdown_tree_sitter_markdown_inline',
+);

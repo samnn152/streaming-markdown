@@ -1,7 +1,7 @@
 import 'markdown_nodes.dart';
 import 'rope_string.dart';
 
-final class RopeMarkdownParser {
+class RopeMarkdownParser {
   const RopeMarkdownParser();
 
   MarkdownDocument parse(RopeString source) {
@@ -253,9 +253,9 @@ final class RopeMarkdownParser {
   bool _isBlank(String text) => text.trim().isEmpty;
 }
 
-final class StreamingMarkdownParser {
+class StreamingMarkdownParser {
   StreamingMarkdownParser({RopeMarkdownParser? parser})
-    : _parser = parser ?? const RopeMarkdownParser();
+      : _parser = parser ?? const RopeMarkdownParser();
 
   final RopeString _buffer = RopeString();
   final RopeMarkdownParser _parser;
@@ -272,7 +272,7 @@ final class StreamingMarkdownParser {
   void clear() => _buffer.clear();
 }
 
-final class _LineSlice {
+class _LineSlice {
   const _LineSlice({
     required this.start,
     required this.end,
@@ -284,14 +284,14 @@ final class _LineSlice {
   final String text;
 }
 
-final class _HeadingMatch {
+class _HeadingMatch {
   const _HeadingMatch({required this.level, required this.text});
 
   final int level;
   final String text;
 }
 
-final class _FenceStart {
+class _FenceStart {
   const _FenceStart({
     required this.fence,
     required this.marker,
@@ -305,7 +305,7 @@ final class _FenceStart {
   final String language;
 }
 
-final class _FenceResult {
+class _FenceResult {
   const _FenceResult({
     required this.end,
     required this.nextIndex,
@@ -319,14 +319,14 @@ final class _FenceResult {
   final bool closed;
 }
 
-final class _ListItemMatch {
+class _ListItemMatch {
   const _ListItemMatch({required this.ordered, required this.text});
 
   final bool ordered;
   final String text;
 }
 
-final class _ListResult {
+class _ListResult {
   const _ListResult({
     required this.end,
     required this.nextIndex,
@@ -338,7 +338,7 @@ final class _ListResult {
   final List<ListItemNode> items;
 }
 
-final class _ParagraphResult {
+class _ParagraphResult {
   const _ParagraphResult({
     required this.end,
     required this.nextIndex,

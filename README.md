@@ -14,13 +14,18 @@ API surface and behavior may change while streaming and rendering features are b
 - isolate-based parsing for UI pipelines (`StreamingMarkdownParseWorker`)
 - a streaming-friendly Flutter renderer (`StreamingMarkdownRenderView`)
 
+## Platform Support
+
+- Supported: Android, iOS, Linux, macOS, Windows
+- Not supported: Web
+
 ## Installation
 
 Add dependency:
 
 ```yaml
 dependencies:
-  animated_streaming_markdown: ^0.1.3
+  animated_streaming_markdown: ^0.1.4
 ```
 
 Then run:
@@ -67,6 +72,11 @@ StreamingMarkdownRenderView(
   enableTextSelection: true,
 )
 ```
+
+HTML block nodes are rendered with pure Flutter widgets (no embedded WebView),
+so the block naturally wraps its content height instead of using a fixed viewport.
+
+Web is intentionally not a supported target for this package.
 
 ## Public API Documentation
 

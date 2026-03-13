@@ -1,18 +1,18 @@
-sealed class MarkdownBlockNode {
+abstract class MarkdownBlockNode {
   const MarkdownBlockNode({required this.start, required this.end});
 
   final int start;
   final int end;
 }
 
-final class MarkdownDocument {
+class MarkdownDocument {
   const MarkdownDocument({required this.blocks, required this.length});
 
   final List<MarkdownBlockNode> blocks;
   final int length;
 }
 
-final class HeadingNode extends MarkdownBlockNode {
+class HeadingNode extends MarkdownBlockNode {
   const HeadingNode({
     required super.start,
     required super.end,
@@ -24,7 +24,7 @@ final class HeadingNode extends MarkdownBlockNode {
   final String text;
 }
 
-final class ParagraphNode extends MarkdownBlockNode {
+class ParagraphNode extends MarkdownBlockNode {
   const ParagraphNode({
     required super.start,
     required super.end,
@@ -34,7 +34,7 @@ final class ParagraphNode extends MarkdownBlockNode {
   final String text;
 }
 
-final class CodeFenceNode extends MarkdownBlockNode {
+class CodeFenceNode extends MarkdownBlockNode {
   const CodeFenceNode({
     required super.start,
     required super.end,
@@ -50,7 +50,7 @@ final class CodeFenceNode extends MarkdownBlockNode {
   final bool closed;
 }
 
-final class ListNode extends MarkdownBlockNode {
+class ListNode extends MarkdownBlockNode {
   const ListNode({
     required super.start,
     required super.end,
@@ -62,7 +62,7 @@ final class ListNode extends MarkdownBlockNode {
   final List<ListItemNode> items;
 }
 
-final class ListItemNode {
+class ListItemNode {
   const ListItemNode({
     required this.start,
     required this.end,

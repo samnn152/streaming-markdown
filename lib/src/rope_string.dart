@@ -42,9 +42,8 @@ class RopeString {
     int cursor = start;
 
     while (cursor < end) {
-      final int chunkStart = chunkIndex == 0
-          ? 0
-          : _prefixCodeUnits[chunkIndex - 1];
+      final int chunkStart =
+          chunkIndex == 0 ? 0 : _prefixCodeUnits[chunkIndex - 1];
       final int chunkEnd = _prefixCodeUnits[chunkIndex];
 
       final int localStart = cursor - chunkStart;
@@ -62,9 +61,8 @@ class RopeString {
   int codeUnitAt(int index) {
     RangeError.checkValidIndex(index, this, 'index', _length);
     final int chunkIndex = _lowerBoundPrefix(index + 1);
-    final int chunkStart = chunkIndex == 0
-        ? 0
-        : _prefixCodeUnits[chunkIndex - 1];
+    final int chunkStart =
+        chunkIndex == 0 ? 0 : _prefixCodeUnits[chunkIndex - 1];
     return _chunks[chunkIndex].codeUnitAt(index - chunkStart);
   }
 

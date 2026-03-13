@@ -8,7 +8,7 @@ import 'native_symbols.dart';
 ///
 /// Use this when you need append-heavy operations with native storage.
 /// Remember to call [dispose] when done.
-final class NativeRopeBuffer implements Finalizable {
+class NativeRopeBuffer implements Finalizable {
   static final NativeFinalizer _finalizer = NativeFinalizer(
     _ropeDestroyPtr.cast(),
   );
@@ -95,43 +95,41 @@ final class NativeRopeBuffer implements Finalizable {
 
 final Pointer<NativeFunction<Void Function(Pointer<Void>)>> _ropeDestroyPtr =
     streamingMarkdownDylib.lookup<NativeFunction<Void Function(Pointer<Void>)>>(
-      'streaming_markdown_rope_destroy',
-    );
+  'streaming_markdown_rope_destroy',
+);
 
 final Pointer<Void> Function() _ropeCreate = streamingMarkdownDylib
     .lookupFunction<Pointer<Void> Function(), Pointer<Void> Function()>(
-      'streaming_markdown_rope_create',
-    );
+  'streaming_markdown_rope_create',
+);
 
 final void Function(Pointer<Void>) _ropeDestroy = streamingMarkdownDylib
     .lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
-      'streaming_markdown_rope_destroy',
-    );
+  'streaming_markdown_rope_destroy',
+);
 
 final void Function(Pointer<Void>, Pointer<Utf8>) _ropeAppend =
     streamingMarkdownDylib.lookupFunction<
-      Void Function(Pointer<Void>, Pointer<Utf8>),
-      void Function(Pointer<Void>, Pointer<Utf8>)
-    >('streaming_markdown_rope_append_utf8');
+        Void Function(Pointer<Void>, Pointer<Utf8>),
+        void Function(Pointer<Void>,
+            Pointer<Utf8>)>('streaming_markdown_rope_append_utf8');
 
-final int Function(Pointer<Void>) _ropeLength = streamingMarkdownDylib
-    .lookupFunction<
-      Uint64 Function(Pointer<Void>),
-      int Function(Pointer<Void>)
-    >('streaming_markdown_rope_length_bytes');
+final int Function(Pointer<Void>) _ropeLength =
+    streamingMarkdownDylib.lookupFunction<Uint64 Function(Pointer<Void>),
+        int Function(Pointer<Void>)>('streaming_markdown_rope_length_bytes');
 
 final Pointer<Utf8> Function(Pointer<Void>, int, int) _ropeSubstring =
     streamingMarkdownDylib.lookupFunction<
-      Pointer<Utf8> Function(Pointer<Void>, Uint64, Uint64),
-      Pointer<Utf8> Function(Pointer<Void>, int, int)
-    >('streaming_markdown_rope_substring_utf8');
+        Pointer<Utf8> Function(Pointer<Void>, Uint64, Uint64),
+        Pointer<Utf8> Function(
+            Pointer<Void>, int, int)>('streaming_markdown_rope_substring_utf8');
 
 final void Function(Pointer<Utf8>) _ropeFreeCString = streamingMarkdownDylib
     .lookupFunction<Void Function(Pointer<Utf8>), void Function(Pointer<Utf8>)>(
-      'streaming_markdown_rope_free_c_string',
-    );
+  'streaming_markdown_rope_free_c_string',
+);
 
 final void Function(Pointer<Void>) _ropeClear = streamingMarkdownDylib
     .lookupFunction<Void Function(Pointer<Void>), void Function(Pointer<Void>)>(
-      'streaming_markdown_rope_clear',
-    );
+  'streaming_markdown_rope_clear',
+);

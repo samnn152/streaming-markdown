@@ -1,22 +1,20 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'package:html/dom.dart' as html_dom;
+import 'package:html/parser.dart' as html_parser;
 
 import 'markdown_render_node.dart';
 
 part 'streaming_markdown_render_text_parsing.dart';
 
 /// Custom builder hook for overriding a rendered markdown block widget.
-typedef StreamingMarkdownBlockBuilder =
-    Widget? Function(
-      BuildContext context,
-      StreamingMarkdownBlockBuildContext block,
-    );
+typedef StreamingMarkdownBlockBuilder = Widget? Function(
+  BuildContext context,
+  StreamingMarkdownBlockBuildContext block,
+);
 
 /// Context object passed to [StreamingMarkdownBlockBuilder].
-final class StreamingMarkdownBlockBuildContext {
+class StreamingMarkdownBlockBuildContext {
   const StreamingMarkdownBlockBuildContext({
     required this.node,
     required this.linkReferences,
@@ -34,7 +32,7 @@ final class StreamingMarkdownBlockBuildContext {
 }
 
 /// Theme/customization data for [StreamingMarkdownRenderView].
-final class StreamingMarkdownThemeData {
+class StreamingMarkdownThemeData {
   const StreamingMarkdownThemeData({
     this.blockSpacing = 12,
     this.paragraphTextStyle,
@@ -475,10 +473,11 @@ class StreamingMarkdownRenderView extends StatelessWidget
       return '0';
     }
     final List<MapEntry<String, String>> entries =
-        linkReferences.entries.toList(growable: false)..sort(
-          (MapEntry<String, String> a, MapEntry<String, String> b) =>
-              a.key.compareTo(b.key),
-        );
+        linkReferences.entries.toList(growable: false)
+          ..sort(
+            (MapEntry<String, String> a, MapEntry<String, String> b) =>
+                a.key.compareTo(b.key),
+          );
     final StringBuffer buffer = StringBuffer();
     for (final MapEntry<String, String> entry in entries) {
       buffer
@@ -571,7 +570,12 @@ class StreamingMarkdownRenderView extends StatelessWidget
       case 'pipe_table_delimiter_row':
         return _buildTableBlock(context, node, linkReferences: linkReferences);
       case 'html_block':
-        return _HtmlBlockCard(html: _normalizedRaw(node.raw));
+        return _HtmlBlockCard(
+          html: _normalizedRaw(node.raw),
+          onLinkTap: (String url) => _onLinkPressed(context, url),
+          paragraphTextStyle: markdownTheme.paragraphTextStyle ??
+              Theme.of(context).textTheme.bodyLarge,
+        );
       case 'front_matter':
       case 'link_reference_definition':
         return _buildMetadataBlock(
@@ -604,38 +608,32 @@ class StreamingMarkdownRenderView extends StatelessWidget
     TextStyle style;
     switch (level) {
       case 1:
-        style =
-            markdownTheme.heading1TextStyle ??
+        style = markdownTheme.heading1TextStyle ??
             textTheme.headlineMedium ??
             const TextStyle(fontSize: 28, fontWeight: FontWeight.w700);
         break;
       case 2:
-        style =
-            markdownTheme.heading2TextStyle ??
+        style = markdownTheme.heading2TextStyle ??
             textTheme.headlineSmall ??
             const TextStyle(fontSize: 24, fontWeight: FontWeight.w700);
         break;
       case 3:
-        style =
-            markdownTheme.heading3TextStyle ??
+        style = markdownTheme.heading3TextStyle ??
             textTheme.titleLarge ??
             const TextStyle(fontSize: 20, fontWeight: FontWeight.w700);
         break;
       case 4:
-        style =
-            markdownTheme.heading4TextStyle ??
+        style = markdownTheme.heading4TextStyle ??
             textTheme.titleMedium ??
             const TextStyle(fontSize: 18, fontWeight: FontWeight.w700);
         break;
       case 5:
-        style =
-            markdownTheme.heading5TextStyle ??
+        style = markdownTheme.heading5TextStyle ??
             textTheme.titleSmall ??
             const TextStyle(fontSize: 16, fontWeight: FontWeight.w700);
         break;
       default:
-        style =
-            markdownTheme.heading6TextStyle ??
+        style = markdownTheme.heading6TextStyle ??
             textTheme.bodyLarge ??
             const TextStyle(fontSize: 14, fontWeight: FontWeight.w700);
         break;
@@ -666,8 +664,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     return _buildInlineMarkdown(
       context,
       text,
-      baseStyle:
-          markdownTheme.paragraphTextStyle ??
+      baseStyle: markdownTheme.paragraphTextStyle ??
           Theme.of(context).textTheme.bodyLarge,
       linkReferences: linkReferences,
     );
@@ -687,8 +684,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       );
     }
 
-    final TextStyle baseStyle =
-        markdownTheme.paragraphTextStyle ??
+    final TextStyle baseStyle = markdownTheme.paragraphTextStyle ??
         Theme.of(context).textTheme.bodyLarge ??
         const TextStyle(fontSize: 16);
 
@@ -765,8 +761,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
           _buildInlineMarkdown(
             context,
             callout?.body ?? text,
-            baseStyle:
-                markdownTheme.paragraphTextStyle ??
+            baseStyle: markdownTheme.paragraphTextStyle ??
                 Theme.of(context).textTheme.bodyLarge,
             linkReferences: linkReferences,
           ),
@@ -797,8 +792,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color:
-                    markdownTheme.codeBlockHeaderBackgroundColor ??
+                color: markdownTheme.codeBlockHeaderBackgroundColor ??
                     const Color(0xFF161B22),
                 borderRadius: const BorderRadius.vertical(
                   top: Radius.circular(8),
@@ -806,8 +800,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
               ),
               child: Text(
                 language,
-                style:
-                    markdownTheme.codeBlockLanguageTextStyle ??
+                style: markdownTheme.codeBlockLanguageTextStyle ??
                     const TextStyle(
                       color: Color(0xFF8B949E),
                       fontSize: 12,
@@ -819,8 +812,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
             padding: const EdgeInsets.all(12),
             child: SelectableText(
               code,
-              style:
-                  markdownTheme.codeBlockTextStyle ??
+              style: markdownTheme.codeBlockTextStyle ??
                   const TextStyle(
                     color: Color(0xFFE6EDF3),
                     fontFamily: 'monospace',
@@ -881,8 +873,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
         children: <TableRow>[
           TableRow(
             decoration: BoxDecoration(
-              color:
-                  markdownTheme.tableHeaderBackgroundColor ??
+              color: markdownTheme.tableHeaderBackgroundColor ??
                   const Color(0xFF21262D),
             ),
             children: table.headers
@@ -949,8 +940,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       child: _buildInlineMarkdown(
         context,
         text,
-        baseStyle:
-            markdownTheme.metadataTextStyle ??
+        baseStyle: markdownTheme.metadataTextStyle ??
             const TextStyle(
               color: Color(0xFFF0F6FC),
               fontFamily: 'monospace',
@@ -1008,17 +998,15 @@ class StreamingMarkdownRenderView extends StatelessWidget
           child: Image.network(
             image.url,
             fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => Container(
+            errorBuilder: (_, __, ___) => Container(
               height: 120,
               width: double.infinity,
-              color:
-                  markdownTheme.imageErrorBackgroundColor ??
+              color: markdownTheme.imageErrorBackgroundColor ??
                   const Color(0xFF161B22),
               alignment: Alignment.center,
               child: Text(
                 'Image unavailable',
-                style:
-                    markdownTheme.imageErrorTextStyle ??
+                style: markdownTheme.imageErrorTextStyle ??
                     const TextStyle(color: Color(0xFFF0F6FC)),
               ),
             ),
@@ -1029,9 +1017,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
           Text(
             image.alt,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: const Color(0xFF8B949E),
-              fontStyle: FontStyle.italic,
-            ),
+                  color: const Color(0xFF8B949E),
+                  fontStyle: FontStyle.italic,
+                ),
           ),
         ],
       ],
@@ -1043,9 +1031,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
       return Icon(
         item.taskState! ? Icons.check_box : Icons.check_box_outline_blank,
         size: 16,
-        color: item.taskState!
-            ? const Color(0xFF2EA043)
-            : const Color(0xFF8B949E),
+        color:
+            item.taskState! ? const Color(0xFF2EA043) : const Color(0xFF8B949E),
       );
     }
     if (item.ordered) {
@@ -1065,8 +1052,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       return const SizedBox.shrink();
     }
 
-    final TextStyle resolvedStyle =
-        baseStyle ??
+    final TextStyle resolvedStyle = baseStyle ??
         markdownTheme.paragraphTextStyle ??
         Theme.of(context).textTheme.bodyLarge ??
         const TextStyle(fontSize: 16);
@@ -1106,8 +1092,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       }
 
       if (token.style.code) {
-        final TextStyle inlineCodeStyle =
-            markdownTheme.inlineCodeTextStyle ??
+        final TextStyle inlineCodeStyle = markdownTheme.inlineCodeTextStyle ??
             const TextStyle(
               color: Color(0xFFE6EDF3),
               fontFamily: 'monospace',
@@ -1120,8 +1105,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
               margin: const EdgeInsets.symmetric(horizontal: 2),
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
-                color:
-                    markdownTheme.inlineCodeBackgroundColor ??
+                color: markdownTheme.inlineCodeBackgroundColor ??
                     const Color(0xFF21262D),
                 borderRadius: BorderRadius.circular(4),
               ),
@@ -1205,9 +1189,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
     final List<InlineSpan> selectableSpans = <InlineSpan>[];
     for (final _InlineToken token in tokens) {
       if (token.isImage) {
-        final String imageText = token.altText.isEmpty
-            ? '[image]'
-            : '[image: ${token.altText}]';
+        final String imageText =
+            token.altText.isEmpty ? '[image]' : '[image: ${token.altText}]';
         selectableSpans.add(
           TextSpan(
             text: imageText,
@@ -1344,12 +1327,12 @@ class StreamingMarkdownRenderView extends StatelessWidget
             child: onTap == null
                 ? tokenWidget
                 : (debugTokenHighlight
-                      ? InkWell(
-                          onTap: onTap,
-                          borderRadius: BorderRadius.circular(4),
-                          child: tokenWidget,
-                        )
-                      : GestureDetector(onTap: onTap, child: tokenWidget)),
+                    ? InkWell(
+                        onTap: onTap,
+                        borderRadius: BorderRadius.circular(4),
+                        child: tokenWidget,
+                      )
+                    : GestureDetector(onTap: onTap, child: tokenWidget)),
           ),
         ),
       );
@@ -1371,12 +1354,11 @@ class StreamingMarkdownRenderView extends StatelessWidget
   }
 }
 
-typedef _BlockBuilder =
-    Widget Function(
-      BuildContext context,
-      MarkdownRenderNode node,
-      Map<String, String> linkReferences,
-    );
+typedef _BlockBuilder = Widget Function(
+  BuildContext context,
+  MarkdownRenderNode node,
+  Map<String, String> linkReferences,
+);
 
 class _BlockRenderHost extends StatefulWidget {
   const _BlockRenderHost({
@@ -1475,9 +1457,15 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
 }
 
 class _HtmlBlockCard extends StatelessWidget {
-  const _HtmlBlockCard({required this.html});
+  const _HtmlBlockCard({
+    required this.html,
+    required this.onLinkTap,
+    required this.paragraphTextStyle,
+  });
 
   final String html;
+  final ValueChanged<String> onLinkTap;
+  final TextStyle? paragraphTextStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -1485,137 +1473,514 @@ class _HtmlBlockCard extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final html_dom.DocumentFragment fragment = html_parser.parseFragment(html);
+    final _HtmlBlockRenderer renderer = _HtmlBlockRenderer(
+      context: context,
+      onLinkTap: onLinkTap,
+      paragraphTextStyle: paragraphTextStyle,
+    );
+    final List<Widget> blocks = renderer.buildBlocks(fragment.nodes);
+    if (blocks.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
     return Container(
       width: double.infinity,
-      height: 280,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xFF30363D)),
       ),
-      clipBehavior: Clip.antiAlias,
-      child: _HtmlBlockWebView(
-        key: ValueKey<int>(html.hashCode),
-        htmlDocument: _htmlDocumentForWebView(html),
-        fallbackText: html,
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: _HtmlBlockRenderer.withSpacing(blocks, 8),
+      ),
+    );
+  }
+}
+
+class _HtmlBlockRenderer {
+  _HtmlBlockRenderer({
+    required this.context,
+    required this.onLinkTap,
+    required this.paragraphTextStyle,
+  });
+
+  static const Color _borderColor = Color(0xFF30363D);
+  static const Color _codeBackgroundColor = Color(0xFF161B22);
+  static const Color _codeForegroundColor = Color(0xFFE6EDF3);
+  static const Color _linkColor = Color(0xFF58A6FF);
+  static const Set<String> _blockTags = <String>{
+    'address',
+    'article',
+    'aside',
+    'blockquote',
+    'dd',
+    'div',
+    'dl',
+    'dt',
+    'figcaption',
+    'figure',
+    'footer',
+    'form',
+    'h1',
+    'h2',
+    'h3',
+    'h4',
+    'h5',
+    'h6',
+    'header',
+    'hr',
+    'li',
+    'main',
+    'nav',
+    'ol',
+    'p',
+    'pre',
+    'section',
+    'table',
+    'ul',
+  };
+
+  final BuildContext context;
+  final ValueChanged<String> onLinkTap;
+  final TextStyle? paragraphTextStyle;
+
+  TextStyle get _paragraphStyle =>
+      paragraphTextStyle ??
+      Theme.of(context).textTheme.bodyLarge ??
+      const TextStyle(fontSize: 15, height: 1.45, color: _codeForegroundColor);
+
+  List<Widget> buildBlocks(
+    List<html_dom.Node> nodes, {
+    int listDepth = 0,
+  }) {
+    final List<Widget> out = <Widget>[];
+    for (final html_dom.Node node in nodes) {
+      if (node is html_dom.Text) {
+        final Widget paragraph = _buildParagraphFromText(node.text);
+        if (paragraph is! SizedBox) {
+          out.add(paragraph);
+        }
+        continue;
+      }
+      if (node is! html_dom.Element) {
+        continue;
+      }
+      out.addAll(_buildElement(node, listDepth: listDepth));
+    }
+    return out;
+  }
+
+  static List<Widget> withSpacing(List<Widget> children, double spacing) {
+    if (children.length < 2) {
+      return children;
+    }
+    final List<Widget> out = <Widget>[];
+    for (int i = 0; i < children.length; i++) {
+      out.add(children[i]);
+      if (i < children.length - 1) {
+        out.add(SizedBox(height: spacing));
+      }
+    }
+    return out;
+  }
+
+  List<Widget> _buildElement(html_dom.Element element,
+      {required int listDepth}) {
+    final String tag = (element.localName ?? '').toLowerCase();
+    switch (tag) {
+      case 'h1':
+      case 'h2':
+      case 'h3':
+      case 'h4':
+      case 'h5':
+      case 'h6':
+        return <Widget>[_buildHeading(element, level: int.parse(tag[1]))];
+      case 'p':
+        return <Widget>[_buildParagraph(element.nodes)];
+      case 'pre':
+        return <Widget>[_buildCodeBlock(element.text)];
+      case 'blockquote':
+        return <Widget>[_buildBlockQuote(element, listDepth: listDepth)];
+      case 'ul':
+        return <Widget>[
+          _buildList(element, ordered: false, listDepth: listDepth)
+        ];
+      case 'ol':
+        return <Widget>[
+          _buildList(element, ordered: true, listDepth: listDepth)
+        ];
+      case 'table':
+        return <Widget>[_buildTable(element)];
+      case 'img':
+        return <Widget>[_buildImage(element)];
+      case 'hr':
+        return <Widget>[
+          const Divider(height: 1, thickness: 1, color: _borderColor),
+        ];
+      case 'a':
+        return <Widget>[_buildStandaloneAnchor(element)];
+      case 'br':
+        return const <Widget>[];
+      default:
+        if (_containsBlockChildren(element)) {
+          return buildBlocks(element.nodes, listDepth: listDepth);
+        }
+        final Widget paragraph = _buildParagraph(element.nodes);
+        if (paragraph is SizedBox) {
+          return const <Widget>[];
+        }
+        return <Widget>[paragraph];
+    }
+  }
+
+  Widget _buildHeading(html_dom.Element element, {required int level}) {
+    final double size;
+    switch (level) {
+      case 1:
+        size = 26;
+        break;
+      case 2:
+        size = 22;
+        break;
+      case 3:
+        size = 20;
+        break;
+      case 4:
+        size = 18;
+        break;
+      case 5:
+        size = 16;
+        break;
+      default:
+        size = 14;
+        break;
+    }
+    return _buildParagraph(
+      element.nodes,
+      style:
+          _paragraphStyle.copyWith(fontSize: size, fontWeight: FontWeight.w700),
+    );
+  }
+
+  Widget _buildParagraphFromText(String rawText) {
+    final String normalized = _normalizeInlineText(rawText).trim();
+    if (normalized.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Text(normalized, style: _paragraphStyle);
+  }
+
+  Widget _buildParagraph(List<html_dom.Node> nodes, {TextStyle? style}) {
+    final TextStyle resolvedStyle = style ?? _paragraphStyle;
+    final List<InlineSpan> spans = _buildInlineSpans(nodes, resolvedStyle);
+    final String plain =
+        spans.map((InlineSpan span) => span.toPlainText()).join();
+    if (plain.trim().isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Text.rich(TextSpan(style: resolvedStyle, children: spans));
+  }
+
+  Widget _buildCodeBlock(String raw) {
+    final String code = raw.trimRight();
+    if (code.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        color: _codeBackgroundColor,
+      ),
+      padding: const EdgeInsets.all(10),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SelectableText(
+          code,
+          style: const TextStyle(
+            color: _codeForegroundColor,
+            fontFamily: 'monospace',
+            fontSize: 13,
+            height: 1.4,
+          ),
+        ),
       ),
     );
   }
 
-  String _htmlDocumentForWebView(String rawHtml) {
-    if (RegExp(r'<\s*html[\s>]', caseSensitive: false).hasMatch(rawHtml)) {
-      return rawHtml;
+  Widget _buildBlockQuote(html_dom.Element element, {required int listDepth}) {
+    final List<Widget> blocks =
+        buildBlocks(element.nodes, listDepth: listDepth);
+    if (blocks.isEmpty) {
+      return const SizedBox.shrink();
     }
-
-    return '''
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <style>
-      :root { color-scheme: dark; }
-      body {
-        margin: 12px;
-        color: #f0f6fc;
-        background: #0d1117;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        line-height: 1.45;
-      }
-      a { color: #58a6ff; }
-      table { border-collapse: collapse; }
-      th, td {
-        border: 1px solid #30363d;
-        padding: 6px 8px;
-      }
-      code {
-        background: #161b22;
-        color: #e6edf3;
-        border-radius: 4px;
-        padding: 1px 4px;
-      }
-      pre {
-        background: #161b22;
-        color: #e6edf3;
-        border-radius: 6px;
-        padding: 10px;
-        overflow-x: auto;
-      }
-    </style>
-  </head>
-  <body>$rawHtml</body>
-</html>
-''';
-  }
-}
-
-class _HtmlBlockWebView extends StatefulWidget {
-  const _HtmlBlockWebView({
-    super.key,
-    required this.htmlDocument,
-    required this.fallbackText,
-  });
-
-  final String htmlDocument;
-  final String fallbackText;
-
-  @override
-  State<_HtmlBlockWebView> createState() => _HtmlBlockWebViewState();
-}
-
-class _HtmlBlockWebViewState extends State<_HtmlBlockWebView> {
-  WebViewController? _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _initController();
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color.fromRGBO(22, 27, 34, 0.35),
+        border: const Border(left: BorderSide(color: _borderColor, width: 3)),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: withSpacing(blocks, 6),
+      ),
+    );
   }
 
-  @override
-  void didUpdateWidget(covariant _HtmlBlockWebView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.htmlDocument == widget.htmlDocument) {
-      return;
+  Widget _buildList(
+    html_dom.Element element, {
+    required bool ordered,
+    required int listDepth,
+  }) {
+    final List<html_dom.Element> items = element.children
+        .where((html_dom.Element child) => child.localName == 'li')
+        .toList(growable: false);
+    if (items.isEmpty) {
+      return _buildParagraph(element.nodes);
     }
 
-    final WebViewController? controller = _controller;
-    if (controller != null) {
-      unawaited(controller.loadHtmlString(widget.htmlDocument));
-      return;
-    }
-
-    _initController();
+    final double markerWidth = 28 + (listDepth * 14);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (int i = 0; i < items.length; i++) ...[
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: markerWidth,
+                child: Text(
+                  ordered ? '${i + 1}.' : '•',
+                  style: _paragraphStyle,
+                ),
+              ),
+              Expanded(
+                child: _buildListItemBody(
+                  items[i],
+                  nextListDepth: listDepth + 1,
+                ),
+              ),
+            ],
+          ),
+          if (i < items.length - 1) const SizedBox(height: 6),
+        ],
+      ],
+    );
   }
 
-  void _initController() {
-    try {
-      final WebViewController controller = WebViewController()
-        ..setJavaScriptMode(JavaScriptMode.unrestricted)
-        ..setBackgroundColor(const Color(0xFF0D1117))
-        ..loadHtmlString(widget.htmlDocument);
-      _controller = controller;
-    } catch (_) {
-      _controller = null;
+  Widget _buildListItemBody(html_dom.Element item,
+      {required int nextListDepth}) {
+    final List<Widget> blocks =
+        buildBlocks(item.nodes, listDepth: nextListDepth);
+    if (blocks.isEmpty) {
+      return const SizedBox.shrink();
     }
+    if (blocks.length == 1) {
+      return blocks.first;
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: withSpacing(blocks, 6),
+    );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final WebViewController? controller = _controller;
-    if (controller == null) {
-      return SingleChildScrollView(
-        padding: const EdgeInsets.all(10),
-        child: SelectableText(
-          widget.fallbackText,
-          style: const TextStyle(
-            color: Color(0xFFF0F6FC),
-            fontFamily: 'monospace',
-            fontSize: 12,
-            height: 1.4,
+  Widget _buildTable(html_dom.Element table) {
+    final List<html_dom.Element> rows = table.querySelectorAll('tr');
+    if (rows.isEmpty) {
+      return _buildParagraph(table.nodes);
+    }
+
+    final List<List<html_dom.Element>> matrix = <List<html_dom.Element>>[];
+    int maxColumns = 0;
+    for (final html_dom.Element row in rows) {
+      final List<html_dom.Element> cells = row.children
+          .where(
+            (html_dom.Element child) =>
+                child.localName == 'th' || child.localName == 'td',
+          )
+          .toList(growable: false);
+      if (cells.isEmpty) {
+        continue;
+      }
+      matrix.add(cells);
+      if (cells.length > maxColumns) {
+        maxColumns = cells.length;
+      }
+    }
+
+    if (matrix.isEmpty || maxColumns == 0) {
+      return _buildParagraph(table.nodes);
+    }
+
+    final List<TableRow> rowsOut = <TableRow>[];
+    for (int rowIndex = 0; rowIndex < matrix.length; rowIndex++) {
+      final List<html_dom.Element> row = matrix[rowIndex];
+      final List<Widget> cellWidgets = <Widget>[];
+      for (int col = 0; col < maxColumns; col++) {
+        if (col >= row.length) {
+          cellWidgets.add(const SizedBox.shrink());
+          continue;
+        }
+        final html_dom.Element cell = row[col];
+        final bool isHeader = cell.localName == 'th' || rowIndex == 0;
+        cellWidgets.add(
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: _buildParagraph(
+              cell.nodes,
+              style: isHeader
+                  ? _paragraphStyle.copyWith(fontWeight: FontWeight.w600)
+                  : _paragraphStyle,
+            ),
+          ),
+        );
+      }
+      rowsOut.add(TableRow(children: cellWidgets));
+    }
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Table(
+        defaultVerticalAlignment: TableCellVerticalAlignment.top,
+        border: TableBorder.all(color: _borderColor),
+        children: rowsOut,
+      ),
+    );
+  }
+
+  Widget _buildImage(html_dom.Element element) {
+    final String src = (element.attributes['src'] ?? '').trim();
+    final String alt = (element.attributes['alt'] ?? '').trim();
+    if (src.isEmpty) {
+      return _buildParagraphFromText(alt);
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Image.network(
+        src,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: double.infinity,
+          color: _codeBackgroundColor,
+          padding: const EdgeInsets.all(8),
+          child: Text(
+            alt.isEmpty ? src : alt,
+            style: _paragraphStyle.copyWith(color: const Color(0xFF9CA3AF)),
           ),
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    return WebViewWidget(controller: controller);
+  Widget _buildStandaloneAnchor(html_dom.Element element) {
+    final String href = (element.attributes['href'] ?? '').trim();
+    final String label = _normalizeInlineText(element.text).trim();
+    if (href.isEmpty) {
+      return _buildParagraphFromText(label);
+    }
+    final String visible = label.isEmpty ? href : '$label ($href)';
+    return InkWell(
+      onTap: () => onLinkTap(href),
+      child: Text(
+        visible,
+        style: _paragraphStyle.copyWith(
+          color: _linkColor,
+          decoration: TextDecoration.underline,
+        ),
+      ),
+    );
+  }
+
+  List<InlineSpan> _buildInlineSpans(
+      List<html_dom.Node> nodes, TextStyle style) {
+    final List<InlineSpan> spans = <InlineSpan>[];
+    for (final html_dom.Node node in nodes) {
+      if (node is html_dom.Text) {
+        final String text = _normalizeInlineText(node.text);
+        if (text.isNotEmpty) {
+          spans.add(TextSpan(text: text));
+        }
+        continue;
+      }
+      if (node is! html_dom.Element) {
+        continue;
+      }
+      final String tag = (node.localName ?? '').toLowerCase();
+      switch (tag) {
+        case 'br':
+          spans.add(const TextSpan(text: '\n'));
+          break;
+        case 'strong':
+        case 'b':
+          spans.add(
+            TextSpan(
+              style: style.copyWith(fontWeight: FontWeight.w700),
+              children: _buildInlineSpans(node.nodes, style),
+            ),
+          );
+          break;
+        case 'em':
+        case 'i':
+          spans.add(
+            TextSpan(
+              style: style.copyWith(fontStyle: FontStyle.italic),
+              children: _buildInlineSpans(node.nodes, style),
+            ),
+          );
+          break;
+        case 'code':
+          spans.add(
+            TextSpan(
+              style: style.copyWith(
+                fontFamily: 'monospace',
+                color: _codeForegroundColor,
+                backgroundColor: _codeBackgroundColor,
+              ),
+              text: node.text,
+            ),
+          );
+          break;
+        case 'a':
+          final String href = (node.attributes['href'] ?? '').trim();
+          final String label = _normalizeInlineText(node.text).trim();
+          final String visible =
+              href.isEmpty || href == label ? label : '$label ($href)';
+          if (visible.isNotEmpty) {
+            spans.add(
+              TextSpan(
+                style: style.copyWith(
+                  color: _linkColor,
+                  decoration: TextDecoration.underline,
+                ),
+                text: visible,
+              ),
+            );
+          }
+          break;
+        default:
+          spans.addAll(_buildInlineSpans(node.nodes, style));
+          break;
+      }
+    }
+    return spans;
+  }
+
+  bool _containsBlockChildren(html_dom.Element element) {
+    for (final html_dom.Node node in element.nodes) {
+      if (node is! html_dom.Element) {
+        continue;
+      }
+      if (_blockTags.contains((node.localName ?? '').toLowerCase())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  String _normalizeInlineText(String raw) {
+    return raw.replaceAll(RegExp(r'\s+'), ' ');
   }
 }

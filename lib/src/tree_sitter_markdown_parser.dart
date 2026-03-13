@@ -9,7 +9,7 @@ import 'rope_string.dart';
 /// Native tree-sitter markdown parser facade.
 ///
 /// Produces full [MarkdownSyntaxNode] trees for block or inline grammars.
-final class TreeSitterMarkdownParser {
+class TreeSitterMarkdownParser {
   const TreeSitterMarkdownParser();
 
   /// Parses markdown using the block grammar.
@@ -57,17 +57,17 @@ final class TreeSitterMarkdownParser {
 typedef _NativeParseJson = Pointer<Utf8> Function(Pointer<Utf8>);
 typedef _DartParseJson = Pointer<Utf8> Function(Pointer<Utf8>);
 
-final _DartParseJson _parseBlocksToJson = streamingMarkdownDylib
-    .lookupFunction<_NativeParseJson, _DartParseJson>(
-      'streaming_markdown_parse_blocks_to_json',
-    );
+final _DartParseJson _parseBlocksToJson =
+    streamingMarkdownDylib.lookupFunction<_NativeParseJson, _DartParseJson>(
+  'streaming_markdown_parse_blocks_to_json',
+);
 
-final _DartParseJson _parseInlinesToJson = streamingMarkdownDylib
-    .lookupFunction<_NativeParseJson, _DartParseJson>(
-      'streaming_markdown_parse_inlines_to_json',
-    );
+final _DartParseJson _parseInlinesToJson =
+    streamingMarkdownDylib.lookupFunction<_NativeParseJson, _DartParseJson>(
+  'streaming_markdown_parse_inlines_to_json',
+);
 
 final void Function(Pointer<Utf8>) _freeCString = streamingMarkdownDylib
     .lookupFunction<Void Function(Pointer<Utf8>), void Function(Pointer<Utf8>)>(
-      'streaming_markdown_rope_free_c_string',
-    );
+  'streaming_markdown_rope_free_c_string',
+);

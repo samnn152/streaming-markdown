@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-final class MarkdownSyntaxNode {
+class MarkdownSyntaxNode {
   const MarkdownSyntaxNode({
     required this.type,
     required this.startByte,
@@ -35,9 +35,8 @@ final class MarkdownSyntaxNode {
       'endRow': endRow,
       'endColumn': endColumn,
       'text': text,
-      'children': children
-          .map((MarkdownSyntaxNode node) => node.toJson())
-          .toList(),
+      'children':
+          children.map((MarkdownSyntaxNode node) => node.toJson()).toList(),
     };
   }
 

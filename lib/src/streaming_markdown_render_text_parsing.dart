@@ -487,10 +487,14 @@ mixin _StreamingMarkdownTextParsing {
         continue;
       }
 
-      final _DelimitedMatch? bold = _matchAnyDelimited(text, i, const <String>[
-        '**',
-        '__',
-      ], allowUnclosedDelimiters: allowUnclosedDelimiters);
+      final _DelimitedMatch? bold = _matchAnyDelimited(
+          text,
+          i,
+          const <String>[
+            '**',
+            '__',
+          ],
+          allowUnclosedDelimiters: allowUnclosedDelimiters);
       if (bold != null) {
         flushPlain();
         tokens.addAll(
@@ -796,13 +800,13 @@ mixin _StreamingMarkdownTextParsing {
   }
 }
 
-final class _ParsedList {
+class _ParsedList {
   const _ParsedList({required this.items});
 
   final List<_ParsedListItem> items;
 }
 
-final class _ParsedListItem {
+class _ParsedListItem {
   const _ParsedListItem({
     required this.level,
     required this.ordered,
@@ -820,14 +824,14 @@ final class _ParsedListItem {
   final String stableKey;
 }
 
-final class _ParsedTable {
+class _ParsedTable {
   const _ParsedTable({required this.headers, required this.rows});
 
   final List<String> headers;
   final List<List<String>> rows;
 }
 
-final class _CalloutData {
+class _CalloutData {
   const _CalloutData({
     required this.kind,
     required this.title,
@@ -839,14 +843,14 @@ final class _CalloutData {
   final String body;
 }
 
-final class _DelimitedMatch {
+class _DelimitedMatch {
   const _DelimitedMatch({required this.inner, required this.end});
 
   final String inner;
   final int end;
 }
 
-final class _InlineImageMatch {
+class _InlineImageMatch {
   const _InlineImageMatch({
     required this.alt,
     required this.url,
@@ -858,7 +862,7 @@ final class _InlineImageMatch {
   final int end;
 }
 
-final class _InlineLinkMatch {
+class _InlineLinkMatch {
   const _InlineLinkMatch({
     required this.label,
     required this.url,
@@ -870,21 +874,21 @@ final class _InlineLinkMatch {
   final int end;
 }
 
-final class _FootnoteReferenceMatch {
+class _FootnoteReferenceMatch {
   const _FootnoteReferenceMatch({required this.id, required this.end});
 
   final String id;
   final int end;
 }
 
-final class _FootnoteDefinition {
+class _FootnoteDefinition {
   const _FootnoteDefinition({required this.id, required this.body});
 
   final String id;
   final String body;
 }
 
-final class _InlineStyle {
+class _InlineStyle {
   const _InlineStyle({
     this.bold = false,
     this.italic = false,
@@ -912,27 +916,27 @@ final class _InlineStyle {
   }
 }
 
-final class _InlineToken {
+class _InlineToken {
   const _InlineToken.text({
     required this.text,
     required this.style,
     this.linkUrl,
-  }) : altText = '',
-       imageUrl = null,
-       footnoteReferenceId = null;
+  })  : altText = '',
+        imageUrl = null,
+        footnoteReferenceId = null;
 
   const _InlineToken.image({required this.altText, required this.imageUrl})
-    : text = '',
-      style = const _InlineStyle(),
-      linkUrl = null,
-      footnoteReferenceId = null;
+      : text = '',
+        style = const _InlineStyle(),
+        linkUrl = null,
+        footnoteReferenceId = null;
 
   const _InlineToken.footnote({required this.footnoteReferenceId})
-    : text = '',
-      style = const _InlineStyle(),
-      linkUrl = null,
-      altText = '',
-      imageUrl = null;
+      : text = '',
+        style = const _InlineStyle(),
+        linkUrl = null,
+        altText = '',
+        imageUrl = null;
 
   final String text;
   final _InlineStyle style;
