@@ -1,3 +1,8 @@
+## 0.1.5
+
+- Fix dangling library-level DartDoc attachment in package entrypoint.
+- Add DartDoc coverage for public markdown node models to recover pub points.
+
 ## 0.1.4
 
 - Lower package SDK and Flutter lower-bound requirements.

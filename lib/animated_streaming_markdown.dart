@@ -12,6 +12,7 @@
 /// 2. Parse incrementally via [StreamingMarkdownParseWorker] or
 ///    [NativeIncrementalMarkdownParser].
 /// 3. Render [MarkdownRenderNode] blocks via [StreamingMarkdownRenderView].
+library animated_streaming_markdown;
 
 /// Native UTF-8 rope buffer implementation backed by C++.
 export 'src/native_rope_buffer_stub.dart'

@@ -1,95 +1,155 @@
 # animated_streaming_markdown
 
-This package is vibe-coded and currently under active construction.
+`animated_streaming_markdown` is a Flutter package for streaming Markdown
+workflows with:
 
-API surface and behavior may change while streaming and rendering features are being stabilized.
+- native tree-sitter parsing (FFI)
+- incremental parse sessions for append-heavy updates
+- streaming-friendly Flutter rendering (`StreamingMarkdownRenderView`)
+- pure-Dart fallback parsing utilities (`RopeString`, `RopeMarkdownParser`)
 
-## Overview
+## Requirements
 
-`animated_streaming_markdown` is a Flutter FFI package for markdown streaming workflows. It exposes:
+- Dart SDK: `>=2.17.0 <4.0.0`
+- Flutter SDK: `>=3.0.0`
+- Runtime targets: Android, iOS, macOS, Linux, Windows
+- Web: not supported as a runtime target
 
-- append-friendly rope buffers (`RopeString`, `NativeRopeBuffer`)
-- native tree-sitter markdown parsers (`TreeSitterMarkdownParser`)
-- native incremental parser sessions (`NativeIncrementalMarkdownParser`)
-- isolate-based parsing for UI pipelines (`StreamingMarkdownParseWorker`)
-- a streaming-friendly Flutter renderer (`StreamingMarkdownRenderView`)
+### Platform Requirements
 
-## Platform Support
-
-- Supported: Android, iOS, Linux, macOS, Windows
-- Not supported: Web
+- Android: Flutter Android toolchain and Android NDK available for FFI/native build steps.
+- iOS: Xcode + CocoaPods toolchain.
+- macOS: Xcode + CocoaPods toolchain.
+- Linux: Flutter Linux desktop enabled, plus C/C++ desktop build tools (`cmake`, compiler toolchain).
+- Windows: Flutter Windows desktop enabled, plus Visual Studio C++ desktop toolchain.
+- Web: intentionally unsupported for production runtime use; native APIs are unavailable.
 
 ## Installation
 
-Add dependency:
+Add dependency to `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  animated_streaming_markdown: ^0.1.4
+  animated_streaming_markdown: ^0.1.5
 ```
 
-Then run:
+Install packages:
 
 ```bash
 flutter pub get
 ```
 
-## Quick Start
+## Usage
+
+### 1. Streaming parse + render in UI
+
+```dart
+import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
+import 'package:flutter/material.dart';
+
+class StreamingMarkdownPane extends StatefulWidget {
+  const StreamingMarkdownPane({super.key});
+
+  @override
+  State<StreamingMarkdownPane> createState() => _StreamingMarkdownPaneState();
+}
+
+class _StreamingMarkdownPaneState extends State<StreamingMarkdownPane> {
+  final StreamingMarkdownParseWorker _worker = StreamingMarkdownParseWorker();
+  List<MarkdownRenderNode> _nodes = const <MarkdownRenderNode>[];
+  bool _started = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future<void> _start() async {
+    await _worker.start();
+    setState(() {
+      _started = true;
+    });
+  }
+
+  Future<void> setMarkdown(String text) async {
+    if (!_started) return;
+    final result = await _worker.request(
+      op: 'set',
+      text: text,
+      includeNodes: true,
+    );
+    setState(() {
+      _nodes = result.renderNodes;
+    });
+  }
+
+  Future<void> appendMarkdownChunk(String chunk) async {
+    if (!_started) return;
+    final result = await _worker.request(
+      op: 'append',
+      text: chunk,
+      includeNodes: true,
+    );
+    setState(() {
+      _nodes = result.renderNodes;
+    });
+  }
+
+  @override
+  void dispose() {
+    _worker.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamingMarkdownRenderView(
+      nodes: _nodes,
+      enableTextSelection: true,
+      tokenArrivalDelay: const Duration(milliseconds: 25),
+      tokenFadeInDuration: const Duration(milliseconds: 140),
+    );
+  }
+}
+```
+
+### 2. Pure-Dart parsing without native APIs
 
 ```dart
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 
-Future<void> parseIncrementally() async {
-  final worker = StreamingMarkdownParseWorker();
-  await worker.start();
+final RopeString rope = RopeString();
+rope.append('# Hello');
+rope.append('\n\nParagraph');
 
-  await worker.request(
-    op: 'set',
-    text: '# Hello\n\n| A | B |\n| - | - |\n',
-    includeNodes: true,
-  );
+final MarkdownDocument doc = const RopeMarkdownParser().parse(rope);
+print(doc.blocks.length);
+```
 
-  final result = await worker.request(
-    op: 'append',
-    text: '| 1 | 2 |\n',
-    includeNodes: true,
-  );
+### 3. Native parser usage with availability check
 
-  // Use result.renderNodes in StreamingMarkdownRenderView.
-  print(result.renderNodes.length);
+```dart
+import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 
-  worker.dispose();
+if (isStreamingMarkdownNativeLibraryAvailable) {
+  final parser = NativeIncrementalMarkdownParser.create();
+  parser.setText('# Title');
+  final count = parser.blockCount();
+  parser.dispose();
+  print(count);
 }
 ```
 
-## Flutter Rendering
+## Rendering Notes
 
-```dart
-StreamingMarkdownRenderView(
-  nodes: renderNodes,
-  tokenArrivalDelay: const Duration(milliseconds: 50),
-  tokenFadeInDuration: const Duration(milliseconds: 300),
-  enableTextSelection: true,
-)
-```
-
-HTML block nodes are rendered with pure Flutter widgets (no embedded WebView),
-so the block naturally wraps its content height instead of using a fixed viewport.
-
-Web is intentionally not a supported target for this package.
-
-## Public API Documentation
-
-Public API docs are written as DartDoc comments directly in source files:
-
-- `lib/animated_streaming_markdown.dart` (entrypoint and export guide)
-- exported API classes in `lib/src/*`
-
-Use IDE hover/completion docs or `dart doc` to generate HTML docs.
+- `StreamingMarkdownRenderView` accepts `List<MarkdownRenderNode>` and renders block-by-block.
+- HTML block nodes are rendered with pure Flutter widgets (no embedded WebView).
+- HTML blocks wrap content height naturally instead of using a fixed viewport.
 
 ## Example App
 
-See `example/` for a dual-pane chat demo (default theme vs custom theme) with shared question input and streaming markdown rendering.
+See `example/` for a dual-pane chat demo and end-to-end streaming usage.
 
 ## Bundled Tree-sitter Dependencies
 
@@ -98,8 +158,7 @@ This package vendors only the required native sources under `packages/`:
 - `packages/tree-sitter` (tree-sitter runtime)
 - `packages/tree-sitter-markdown` (block + inline markdown grammars)
 
-Both bundled upstream components are MIT-licensed. Current package
-(`animated_streaming_markdown`) remains Apache-2.0.
+Both bundled upstream components are MIT-licensed. This package remains Apache-2.0.
 
 ## License
 
