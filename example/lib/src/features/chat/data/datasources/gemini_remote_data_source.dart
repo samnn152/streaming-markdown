@@ -14,7 +14,7 @@ final class GeminiRemoteDataSource {
 
   Stream<String> streamAnswer(String question) async* {
     if (apiKey.trim().isEmpty) {
-      throw StateError('Thiếu GEMINI_API_KEY trong .env (hoặc --dart-define).');
+      throw StateError('Missing GEMINI_API_KEY in .env or --dart-define.');
     }
 
     final Uri uri = Uri.https(

@@ -85,7 +85,7 @@ Use [OpenAI][openai-link] and [Flutter docs][flutter-docs] for details.
 
 ### Image
 
-![Architecture placeholder](https://via.placeholder.com/640x180.png?text=Streaming+Markdown+Renderer)
+![](https://picsum.photos/seed/streaming-markdown-renderer/640/180)
 
 ### HTML Block
 

@@ -31,7 +31,7 @@ final class ChatState {
     : this(
         isWorkerReady: false,
         isSubmitting: false,
-        status: 'Nhập câu hỏi rồi bấm Submit.',
+        status: 'Enter a question and press Submit.',
         answerMarkdown: '',
         answerNodes: const <MarkdownRenderNode>[],
         streamedTokens: const <String>[],
@@ -86,14 +86,14 @@ final class ChatBloc extends Bloc<ChatEvent, ChatState> {
       emit(
         state.copyWith(
           isWorkerReady: true,
-          status: 'Nhập câu hỏi rồi bấm Submit.',
+          status: 'Enter a question and press Submit.',
         ),
       );
     } catch (error) {
       emit(
         state.copyWith(
           isWorkerReady: false,
-          status: 'Không khởi tạo được markdown worker: $error',
+          status: 'Could not start markdown worker: $error',
         ),
       );
     }
@@ -113,14 +113,14 @@ final class ChatBloc extends Bloc<ChatEvent, ChatState> {
     }
 
     if (!state.isWorkerReady) {
-      emit(state.copyWith(status: 'Markdown worker chưa sẵn sàng.'));
+      emit(state.copyWith(status: 'Markdown worker is not ready.'));
       return;
     }
 
     emit(
       state.copyWith(
         isSubmitting: true,
-        status: 'Đang gọi Gemini...',
+        status: 'Calling Gemini...',
         answerMarkdown: '',
         answerNodes: const <MarkdownRenderNode>[],
         streamedTokens: const <String>[],
@@ -150,18 +150,18 @@ final class ChatBloc extends Bloc<ChatEvent, ChatState> {
             answerMarkdown: _rope.toString(),
             answerNodes: parseResult.renderNodes,
             streamedTokens: nextTokens,
-            status: 'Đang nhận dữ liệu... ($chunkCount chunks)',
+            status: 'Receiving data... ($chunkCount chunks)',
           ),
         );
       }
 
       final String finalStatus = _rope.isEmpty
-          ? 'Không nhận được nội dung trả lời từ Gemini.'
-          : 'Đã nhận câu trả lời.';
+          ? 'Gemini returned no answer content.'
+          : 'Answer received.';
       emit(state.copyWith(isSubmitting: false, status: finalStatus));
     } catch (error) {
       emit(
-        state.copyWith(isSubmitting: false, status: 'Gọi API thất bại: $error'),
+        state.copyWith(isSubmitting: false, status: 'API call failed: $error'),
       );
     }
   }

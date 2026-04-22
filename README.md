@@ -30,7 +30,7 @@ Add dependency to `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  animated_streaming_markdown: ^0.1.5
+  animated_streaming_markdown: ^0.1.6
 ```
 
 Install packages:

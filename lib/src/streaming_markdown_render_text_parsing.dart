@@ -353,6 +353,27 @@ mixin _StreamingMarkdownTextParsing {
     return references;
   }
 
+  Map<String, int> _extractFootnoteNumbers(List<MarkdownRenderNode> nodes) {
+    final Map<String, int> numbers = <String, int>{};
+    for (final MarkdownRenderNode node in nodes) {
+      if (node.type != 'footnote_definition') {
+        continue;
+      }
+      final RegExpMatch? match = RegExp(
+        r'^\s*\[\^([^\]]+)\]:',
+      ).firstMatch(_normalizedRaw(node.raw));
+      if (match == null) {
+        continue;
+      }
+      final String key = _normalizeFootnoteKey(match.group(1)!);
+      if (key.isEmpty || numbers.containsKey(key)) {
+        continue;
+      }
+      numbers[key] = numbers.length + 1;
+    }
+    return numbers;
+  }
+
   List<_InlineToken> _parseInlineTokens(
     String text, {
     _InlineStyle style = const _InlineStyle(),
@@ -576,7 +597,7 @@ mixin _StreamingMarkdownTextParsing {
   }
 
   _FootnoteReferenceMatch? _matchFootnoteReferenceAt(String text, int start) {
-    final Match? match = RegExp(r'^\[\^([^\]]+)\]').matchAsPrefix(text, start);
+    final Match? match = RegExp(r'\[\^([^\]]+)\]').matchAsPrefix(text, start);
     if (match is! RegExpMatch) {
       return null;
     }
@@ -737,7 +758,7 @@ mixin _StreamingMarkdownTextParsing {
   }
 
   String _normalizeReferenceKey(String key) {
-    return key.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
+    return _normalizeFootnoteKey(key);
   }
 
   String _stripEnclosingAngles(String value) {
@@ -886,6 +907,14 @@ class _FootnoteDefinition {
 
   final String id;
   final String body;
+}
+
+int? _footnoteNumberForId(Map<String, int> footnoteNumbers, String id) {
+  return footnoteNumbers[_normalizeFootnoteKey(id)];
+}
+
+String _normalizeFootnoteKey(String key) {
+  return key.toLowerCase().trim().replaceAll(RegExp(r'\s+'), ' ');
 }
 
 class _InlineStyle {

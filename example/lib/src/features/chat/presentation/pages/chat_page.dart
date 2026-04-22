@@ -386,7 +386,7 @@ class _ChatPageState extends State<ChatPage> {
         } else if (state.isSubmitting) {
           answerArea = const Center(child: CircularProgressIndicator());
         } else {
-          answerArea = const Center(child: Text('Chưa có câu trả lời.'));
+          answerArea = const Center(child: Text('No answer yet.'));
         }
 
         final Widget body = SafeArea(
@@ -410,7 +410,7 @@ class _ChatPageState extends State<ChatPage> {
                               enabled: !state.isSubmitting,
                               onSubmitted: (_) => _submit(),
                               decoration: const InputDecoration(
-                                labelText: 'Câu hỏi',
+                                labelText: 'Question',
                                 border: OutlineInputBorder(),
                               ),
                             ),
@@ -462,9 +462,7 @@ class _ChatPageState extends State<ChatPage> {
                           const SizedBox(height: 6),
                           Expanded(
                             child: _displayedTokens.isEmpty
-                                ? const Center(
-                                    child: Text('Chưa có token nào.'),
-                                  )
+                                ? const Center(child: Text('No tokens yet.'))
                                 : ListView.separated(
                                     controller: _tokenScrollController,
                                     scrollDirection: Axis.horizontal,

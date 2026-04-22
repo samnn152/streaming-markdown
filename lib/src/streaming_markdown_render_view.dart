@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as html_dom;
 import 'package:html/parser.dart' as html_parser;
@@ -103,7 +104,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
   const StreamingMarkdownRenderView({
     super.key,
     required this.nodes,
-    this.emptyPlaceholder = 'Không có node block đủ dữ liệu để render.',
+    this.emptyPlaceholder = '',
     this.padding = const EdgeInsets.all(12),
     this.allowUnclosedInlineDelimiters = false,
     this.tokenArrivalDelay = Duration.zero,
@@ -155,6 +156,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     }
 
     final Map<String, String> linkReferences = _extractLinkReferences(nodes);
+    final Map<String, int> footnoteNumbers = _extractFootnoteNumbers(nodes);
     final String refsDigest = _linkReferencesDigest(linkReferences);
     final String renderConfigDigest = _renderConfigDigest(context);
 
@@ -173,6 +175,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
               ),
               node: blocks[i],
               linkReferences: linkReferences,
+              footnoteNumbers: footnoteNumbers,
               builder: _buildRenderedBlockWithRefs,
             ),
             if (i < blocks.length - 1)
@@ -493,11 +496,13 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     MarkdownRenderNode node,
     Map<String, String> linkReferences,
+    Map<String, int> footnoteNumbers,
   ) {
     final Widget defaultWidget = _buildRenderedBlock(
       context,
       node,
       linkReferences: linkReferences,
+      footnoteNumbers: footnoteNumbers,
     );
     final StreamingMarkdownBlockBuilder? builder = customBlockBuilder;
     if (builder == null) {
@@ -518,6 +523,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     MarkdownRenderNode node, {
     required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
   }) {
     switch (node.type) {
       case 'atx_heading':
@@ -526,6 +532,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
           context,
           node,
           linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
         );
       case 'paragraph':
         final String normalizedRaw = _normalizedRaw(node.raw);
@@ -542,18 +549,30 @@ class StreamingMarkdownRenderView extends StatelessWidget
             context,
             paragraphTable,
             linkReferences: linkReferences,
+            footnoteNumbers: footnoteNumbers,
           );
         }
         return _buildParagraphBlock(
           context,
           _paragraphText(node),
           linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
         );
       case 'list':
       case 'list_item':
-        return _buildListBlock(context, node, linkReferences: linkReferences);
+        return _buildListBlock(
+          context,
+          node,
+          linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
+        );
       case 'block_quote':
-        return _buildQuoteBlock(context, node, linkReferences: linkReferences);
+        return _buildQuoteBlock(
+          context,
+          node,
+          linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
+        );
       case 'fenced_code_block':
       case 'indented_code_block':
         return _buildCodeBlock(node);
@@ -568,7 +587,12 @@ class StreamingMarkdownRenderView extends StatelessWidget
       case 'pipe_table_header':
       case 'pipe_table_row':
       case 'pipe_table_delimiter_row':
-        return _buildTableBlock(context, node, linkReferences: linkReferences);
+        return _buildTableBlock(
+          context,
+          node,
+          linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
+        );
       case 'html_block':
         return _HtmlBlockCard(
           html: _normalizedRaw(node.raw),
@@ -582,18 +606,21 @@ class StreamingMarkdownRenderView extends StatelessWidget
           context,
           node,
           linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
         );
       case 'footnote_definition':
         return _buildFootnoteDefinitionBlock(
           context,
           node,
           linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
         );
       default:
         return _buildParagraphBlock(
           context,
           _paragraphText(node),
           linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
         );
     }
   }
@@ -602,6 +629,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     MarkdownRenderNode node, {
     required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
   }) {
     final int level = _headingLevelForNode(node);
     final TextTheme textTheme = Theme.of(context).textTheme;
@@ -644,6 +672,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       _headingText(node),
       baseStyle: style,
       linkReferences: linkReferences,
+      footnoteNumbers: footnoteNumbers,
     );
   }
 
@@ -651,6 +680,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     String text, {
     required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
   }) {
     if (text.isEmpty) {
       return const SizedBox.shrink();
@@ -667,6 +697,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       baseStyle: markdownTheme.paragraphTextStyle ??
           Theme.of(context).textTheme.bodyLarge,
       linkReferences: linkReferences,
+      footnoteNumbers: footnoteNumbers,
     );
   }
 
@@ -674,6 +705,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     MarkdownRenderNode node, {
     required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
   }) {
     final _ParsedList parsed = _parseListNode(node);
     if (parsed.items.isEmpty) {
@@ -681,6 +713,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
         context,
         _contentOrRaw(node),
         linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
       );
     }
 
@@ -708,6 +741,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
                     parsed.items[i].text,
                     baseStyle: baseStyle,
                     linkReferences: linkReferences,
+                    footnoteNumbers: footnoteNumbers,
                   ),
                 ),
               ],
@@ -723,6 +757,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     MarkdownRenderNode node, {
     required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
   }) {
     final String text = _quoteText(node);
     if (text.isEmpty) {
@@ -764,6 +799,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
             baseStyle: markdownTheme.paragraphTextStyle ??
                 Theme.of(context).textTheme.bodyLarge,
             linkReferences: linkReferences,
+            footnoteNumbers: footnoteNumbers,
           ),
         ],
       ),
@@ -830,6 +866,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     MarkdownRenderNode node, {
     required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
   }) {
     final _ParsedTable? parsed = _parseMarkdownTable(
       _normalizedRaw(node.raw),
@@ -838,7 +875,12 @@ class StreamingMarkdownRenderView extends StatelessWidget
     );
     if (parsed != null) {
       _rememberTableSnapshot(node, parsed);
-      return _buildTableWidget(context, parsed, linkReferences: linkReferences);
+      return _buildTableWidget(
+        context,
+        parsed,
+        linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
+      );
     }
 
     final _ParsedTable? snapshot = _readTableSnapshot(node);
@@ -847,6 +889,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
         context,
         snapshot,
         linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
       );
     }
 
@@ -854,6 +897,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       context,
       _contentOrRaw(node),
       linkReferences: linkReferences,
+      footnoteNumbers: footnoteNumbers,
     );
   }
 
@@ -861,6 +905,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     _ParsedTable table, {
     required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
   }) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -888,6 +933,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
                         fontSize: 13,
                       ),
                       linkReferences: linkReferences,
+                      footnoteNumbers: footnoteNumbers,
                     ),
                   ),
                 )
@@ -904,6 +950,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
                         cell,
                         baseStyle: const TextStyle(fontSize: 13),
                         linkReferences: linkReferences,
+                        footnoteNumbers: footnoteNumbers,
                       ),
                     ),
                   )
@@ -919,6 +966,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     MarkdownRenderNode node, {
     required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
   }) {
     final String text = _normalizedRaw(node.raw).trim().isNotEmpty
         ? _normalizedRaw(node.raw).trim()
@@ -947,6 +995,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
               fontSize: 12,
             ),
         linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
       ),
     );
   }
@@ -955,21 +1004,32 @@ class StreamingMarkdownRenderView extends StatelessWidget
     BuildContext context,
     MarkdownRenderNode node, {
     required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
   }) {
     final _FootnoteDefinition? definition = _parseFootnoteDefinition(node.raw);
     if (definition == null) {
-      return _buildMetadataBlock(context, node, linkReferences: linkReferences);
+      return _buildMetadataBlock(
+        context,
+        node,
+        linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
+      );
     }
 
     final TextStyle bodyStyle =
         Theme.of(context).textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
+    final int? footnoteNumber = _footnoteNumberForId(
+      footnoteNumbers,
+      definition.id,
+    );
+    final String marker = footnoteNumber?.toString() ?? definition.id;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 2),
           child: Text(
-            '[${definition.id}]',
+            '$marker.',
             style: bodyStyle.copyWith(
               fontWeight: FontWeight.w700,
               color: const Color(0xFF8B949E),
@@ -983,6 +1043,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
             definition.body,
             baseStyle: bodyStyle,
             linkReferences: linkReferences,
+            footnoteNumbers: footnoteNumbers,
           ),
         ),
       ],
@@ -1028,11 +1089,18 @@ class StreamingMarkdownRenderView extends StatelessWidget
 
   Widget _buildListMarker(_ParsedListItem item, TextStyle baseStyle) {
     if (item.taskState != null) {
-      return Icon(
-        item.taskState! ? Icons.check_box : Icons.check_box_outline_blank,
-        size: 16,
-        color:
-            item.taskState! ? const Color(0xFF2EA043) : const Color(0xFF8B949E),
+      return SizedBox(
+        height: _listMarkerLineHeight(baseStyle),
+        child: Align(
+          alignment: Alignment.centerLeft,
+          child: Icon(
+            item.taskState! ? Icons.check_box : Icons.check_box_outline_blank,
+            size: 16,
+            color: item.taskState!
+                ? const Color(0xFF2EA043)
+                : const Color(0xFF8B949E),
+          ),
+        ),
       );
     }
     if (item.ordered) {
@@ -1041,11 +1109,18 @@ class StreamingMarkdownRenderView extends StatelessWidget
     return Text('•', style: baseStyle);
   }
 
+  double _listMarkerLineHeight(TextStyle baseStyle) {
+    final double fontSize = baseStyle.fontSize ?? 16;
+    final double height = baseStyle.height ?? 1.5;
+    return fontSize * height;
+  }
+
   Widget _buildInlineMarkdown(
     BuildContext context,
     String text, {
     TextStyle? baseStyle,
     Map<String, String> linkReferences = const <String, String>{},
+    Map<String, int> footnoteNumbers = const <String, int>{},
   }) {
     final String normalized = text.replaceAll('\r', '');
     if (normalized.isEmpty) {
@@ -1117,6 +1192,12 @@ class StreamingMarkdownRenderView extends StatelessWidget
       }
 
       if (token.isFootnoteReference) {
+        final int? footnoteNumber = _footnoteNumberForId(
+          footnoteNumbers,
+          token.footnoteReferenceId!,
+        );
+        final String label =
+            footnoteNumber?.toString() ?? token.footnoteReferenceId!;
         spans.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.aboveBaseline,
@@ -1124,7 +1205,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
             child: Padding(
               padding: const EdgeInsets.only(left: 1),
               child: Text(
-                '[${token.footnoteReferenceId}]',
+                label,
                 style: const TextStyle(
                   color: Color(0xFF8B949E),
                   fontSize: 11,
@@ -1186,81 +1267,22 @@ class StreamingMarkdownRenderView extends StatelessWidget
       return animatedRichText;
     }
 
-    final List<InlineSpan> selectableSpans = <InlineSpan>[];
-    for (final _InlineToken token in tokens) {
-      if (token.isImage) {
-        final String imageText =
-            token.altText.isEmpty ? '[image]' : '[image: ${token.altText}]';
-        selectableSpans.add(
-          TextSpan(
-            text: imageText,
-            style: _selectionOverlayStyle(
-              resolvedStyle.copyWith(fontStyle: FontStyle.italic),
-            ),
-          ),
-        );
-        continue;
-      }
-
-      if (token.isFootnoteReference) {
-        selectableSpans.add(
-          TextSpan(
-            text: '[${token.footnoteReferenceId}]',
-            style: _selectionOverlayStyle(
-              resolvedStyle.copyWith(fontSize: 11, fontWeight: FontWeight.w600),
-            ),
-          ),
-        );
-        continue;
-      }
-
-      TextStyle style = resolvedStyle;
-      if (token.style.bold) {
-        style = style.copyWith(fontWeight: FontWeight.w700);
-      }
-      if (token.style.italic) {
-        style = style.copyWith(fontStyle: FontStyle.italic);
-      }
-      if (token.style.strikethrough) {
-        style = style.copyWith(decoration: TextDecoration.lineThrough);
-      }
-      if (token.style.code) {
-        style = style.copyWith(fontFamily: 'monospace', fontSize: 12);
-      }
-      if (token.linkUrl != null && token.linkUrl!.isNotEmpty) {
-        style = style.copyWith(decoration: TextDecoration.underline);
-      }
-
-      selectableSpans.add(
-        TextSpan(text: token.text, style: _selectionOverlayStyle(style)),
-      );
-    }
-
     return Stack(
       alignment: Alignment.centerLeft,
       children: [
         animatedRichText,
         Positioned.fill(
-          child: RichText(
-            textAlign: TextAlign.left,
-            textDirection: TextDirection.ltr,
+          child: _SelectableInlineTextOverlay(
+            tokens: tokens,
+            baseStyle: resolvedStyle,
+            footnoteNumbers: footnoteNumbers,
             textScaler: MediaQuery.textScalerOf(context),
-            selectionRegistrar: SelectionContainer.maybeOf(context),
             selectionColor:
                 markdownTheme.selectionColor ?? const Color(0x6658A6FF),
-            text: TextSpan(style: resolvedStyle, children: selectableSpans),
+            onLinkTap: (String url) => _onLinkPressed(context, url),
           ),
         ),
       ],
-    );
-  }
-
-  TextStyle _selectionOverlayStyle(TextStyle style) {
-    return style.copyWith(
-      color: Colors.transparent,
-      backgroundColor: Colors.transparent,
-      decorationColor: Colors.transparent,
-      shadows: const <Shadow>[],
     );
   }
 
@@ -1354,10 +1376,162 @@ class StreamingMarkdownRenderView extends StatelessWidget
   }
 }
 
+class _SelectableInlineTextOverlay extends StatefulWidget {
+  const _SelectableInlineTextOverlay({
+    required this.tokens,
+    required this.baseStyle,
+    required this.footnoteNumbers,
+    required this.textScaler,
+    required this.selectionColor,
+    required this.onLinkTap,
+  });
+
+  final List<_InlineToken> tokens;
+  final TextStyle baseStyle;
+  final Map<String, int> footnoteNumbers;
+  final TextScaler textScaler;
+  final Color selectionColor;
+  final ValueChanged<String> onLinkTap;
+
+  @override
+  State<_SelectableInlineTextOverlay> createState() =>
+      _SelectableInlineTextOverlayState();
+}
+
+class _SelectableInlineTextOverlayState
+    extends State<_SelectableInlineTextOverlay> {
+  List<TapGestureRecognizer?> _linkRecognizers = <TapGestureRecognizer?>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _replaceRecognizers();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SelectableInlineTextOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _replaceRecognizers();
+  }
+
+  @override
+  void dispose() {
+    _disposeRecognizers();
+    super.dispose();
+  }
+
+  void _replaceRecognizers() {
+    _disposeRecognizers();
+    _linkRecognizers = widget.tokens.map((token) {
+      final String? url = token.linkUrl;
+      if (url == null || url.isEmpty) {
+        return null;
+      }
+      return TapGestureRecognizer()
+        ..onTap = () {
+          widget.onLinkTap(url);
+        };
+    }).toList(growable: false);
+  }
+
+  void _disposeRecognizers() {
+    for (final TapGestureRecognizer? recognizer in _linkRecognizers) {
+      recognizer?.dispose();
+    }
+    _linkRecognizers = <TapGestureRecognizer?>[];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<InlineSpan> spans = <InlineSpan>[];
+    for (int i = 0; i < widget.tokens.length; i++) {
+      final _InlineToken token = widget.tokens[i];
+      if (token.isImage) {
+        final String imageText =
+            token.altText.isEmpty ? '[image]' : '[image: ${token.altText}]';
+        spans.add(
+          TextSpan(
+            text: imageText,
+            style: _selectionOverlayStyle(
+              widget.baseStyle.copyWith(fontStyle: FontStyle.italic),
+            ),
+          ),
+        );
+        continue;
+      }
+
+      if (token.isFootnoteReference) {
+        final int? footnoteNumber = _footnoteNumberForId(
+          widget.footnoteNumbers,
+          token.footnoteReferenceId!,
+        );
+        final String label =
+            footnoteNumber?.toString() ?? token.footnoteReferenceId!;
+        spans.add(
+          TextSpan(
+            text: label,
+            style: _selectionOverlayStyle(
+              widget.baseStyle.copyWith(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        );
+        continue;
+      }
+
+      TextStyle style = widget.baseStyle;
+      if (token.style.bold) {
+        style = style.copyWith(fontWeight: FontWeight.w700);
+      }
+      if (token.style.italic) {
+        style = style.copyWith(fontStyle: FontStyle.italic);
+      }
+      if (token.style.strikethrough) {
+        style = style.copyWith(decoration: TextDecoration.lineThrough);
+      }
+      if (token.style.code) {
+        style = style.copyWith(fontFamily: 'monospace', fontSize: 12);
+      }
+      if (token.linkUrl != null && token.linkUrl!.isNotEmpty) {
+        style = style.copyWith(decoration: TextDecoration.underline);
+      }
+
+      spans.add(
+        TextSpan(
+          text: token.text,
+          style: _selectionOverlayStyle(style),
+          recognizer: _linkRecognizers[i],
+        ),
+      );
+    }
+
+    return RichText(
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
+      textScaler: widget.textScaler,
+      selectionRegistrar: SelectionContainer.maybeOf(context),
+      selectionColor: widget.selectionColor,
+      text: TextSpan(style: widget.baseStyle, children: spans),
+    );
+  }
+}
+
+TextStyle _selectionOverlayStyle(TextStyle style) {
+  return style.copyWith(
+    color: Colors.transparent,
+    backgroundColor: Colors.transparent,
+    decorationColor: Colors.transparent,
+    shadows: const <Shadow>[],
+  );
+}
+
 typedef _BlockBuilder = Widget Function(
   BuildContext context,
   MarkdownRenderNode node,
   Map<String, String> linkReferences,
+  Map<String, int> footnoteNumbers,
 );
 
 class _BlockRenderHost extends StatefulWidget {
@@ -1366,12 +1540,14 @@ class _BlockRenderHost extends StatefulWidget {
     required this.signature,
     required this.node,
     required this.linkReferences,
+    required this.footnoteNumbers,
     required this.builder,
   });
 
   final String signature;
   final MarkdownRenderNode node;
   final Map<String, String> linkReferences;
+  final Map<String, int> footnoteNumbers;
   final _BlockBuilder builder;
 
   @override
@@ -1399,6 +1575,7 @@ class _BlockRenderHostState extends State<_BlockRenderHost> {
         context,
         widget.node,
         widget.linkReferences,
+        widget.footnoteNumbers,
       );
       _cachedSignature = widget.signature;
     }
@@ -1819,17 +1996,18 @@ class _HtmlBlockRenderer {
     for (int rowIndex = 0; rowIndex < matrix.length; rowIndex++) {
       final List<html_dom.Element> row = matrix[rowIndex];
       final List<Widget> cellWidgets = <Widget>[];
+      bool headerRow = rowIndex == 0;
       for (int col = 0; col < maxColumns; col++) {
         if (col >= row.length) {
-          cellWidgets.add(const SizedBox.shrink());
+          cellWidgets.add(_buildTableCell(const SizedBox.shrink()));
           continue;
         }
         final html_dom.Element cell = row[col];
         final bool isHeader = cell.localName == 'th' || rowIndex == 0;
+        headerRow = headerRow || cell.localName == 'th';
         cellWidgets.add(
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: _buildParagraph(
+          _buildTableCell(
+            _buildParagraph(
               cell.nodes,
               style: isHeader
                   ? _paragraphStyle.copyWith(fontWeight: FontWeight.w600)
@@ -1838,15 +2016,32 @@ class _HtmlBlockRenderer {
           ),
         );
       }
-      rowsOut.add(TableRow(children: cellWidgets));
+      rowsOut.add(
+        TableRow(
+          decoration:
+              headerRow ? const BoxDecoration(color: Color(0x1A8B949E)) : null,
+          children: cellWidgets,
+        ),
+      );
     }
 
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Table(
+        defaultColumnWidth: const IntrinsicColumnWidth(),
         defaultVerticalAlignment: TableCellVerticalAlignment.top,
         border: TableBorder.all(color: _borderColor),
         children: rowsOut,
+      ),
+    );
+  }
+
+  Widget _buildTableCell(Widget child) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 88),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: child,
       ),
     );
   }
@@ -1946,16 +2141,26 @@ class _HtmlBlockRenderer {
         case 'a':
           final String href = (node.attributes['href'] ?? '').trim();
           final String label = _normalizeInlineText(node.text).trim();
-          final String visible =
-              href.isEmpty || href == label ? label : '$label ($href)';
+          final String visible = label.isEmpty ? href : label;
           if (visible.isNotEmpty) {
+            final TextStyle linkStyle = style.copyWith(
+              color: _linkColor,
+              decoration: TextDecoration.underline,
+            );
             spans.add(
-              TextSpan(
-                style: style.copyWith(
-                  color: _linkColor,
-                  decoration: TextDecoration.underline,
-                ),
-                text: visible,
+              WidgetSpan(
+                alignment: PlaceholderAlignment.baseline,
+                baseline: TextBaseline.alphabetic,
+                child: href.isEmpty
+                    ? Text(visible, style: linkStyle)
+                    : MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => onLinkTap(href),
+                          child: Text(visible, style: linkStyle),
+                        ),
+                      ),
               ),
             );
           }

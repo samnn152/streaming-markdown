@@ -104,7 +104,7 @@ class _DualChatShowcasePageState extends State<_DualChatShowcasePage> {
                           enabled: !state.isSubmitting,
                           onSubmitted: (_) => _submitSharedQuestion(),
                           decoration: const InputDecoration(
-                            labelText: 'Câu hỏi chung cho 2 pane',
+                            labelText: 'Question for both panes',
                             border: OutlineInputBorder(),
                           ),
                         ),

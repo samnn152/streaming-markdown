@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 
@@ -95,6 +96,146 @@ void main() {
     expect(types.contains('emphasis'), isTrue);
     expect(types.contains('inline_link'), isTrue);
   });
+
+  testWidgets('rendered links are tappable with text selection enabled', (
+    WidgetTester tester,
+  ) async {
+    String? tappedUrl;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                'Tap [OpenAI](https://openai.com) for details.',
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            onLinkTap: (String url) {
+              tappedUrl = url;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tapAt(tester.getCenter(find.text('OpenAI')));
+
+    expect(tappedUrl, 'https://openai.com');
+  });
+
+  testWidgets('html tables use intrinsic columns', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '''
+<table>
+  <tr><th>Column</th><th>Value</th></tr>
+  <tr><td>HTML table</td><td>Rendered</td></tr>
+</table>
+''',
+                type: 'html_block',
+              ),
+            ],
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+
+    final Table table = tester.widget<Table>(find.byType(Table));
+
+    expect(table.defaultColumnWidth, isA<IntrinsicColumnWidth>());
+    expect(find.text('HTML table'), findsOneWidget);
+    expect(find.text('Rendered'), findsOneWidget);
+  });
+
+  testWidgets('html inline links are tappable', (
+    WidgetTester tester,
+  ) async {
+    String? tappedUrl;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '<p>Visit <a href="https://dart.dev">Dart</a>.</p>',
+                type: 'html_block',
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            onLinkTap: (String url) {
+              tappedUrl = url;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.tapAt(tester.getCenter(find.text('Dart')));
+
+    expect(tappedUrl, 'https://dart.dev');
+  });
+
+  testWidgets('footnotes render as numbered references and definitions', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('Has a note[^alpha].', startByte: 0),
+              _renderNode(
+                '[^alpha]: Definition body',
+                type: 'footnote_definition',
+                startByte: 20,
+              ),
+            ],
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('1'), findsOneWidget);
+    expect(find.text('1.'), findsOneWidget);
+    expect(find.text('[alpha]'), findsNothing);
+    expect(find.text('Definition'), findsOneWidget);
+  });
+
+  testWidgets('task list checkbox aligns with item text', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('- [ ] Open task', type: 'list'),
+            ],
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+
+    final Offset checkboxCenter = tester.getCenter(
+      find.byIcon(Icons.check_box_outline_blank),
+    );
+    final Offset textCenter = tester.getCenter(find.text('Open'));
+
+    expect((checkboxCenter.dy - textCenter.dy).abs(), lessThanOrEqualTo(2));
+  });
 }
 
 Set<String> _collectTypes(MarkdownSyntaxNode node) {
@@ -103,4 +244,21 @@ Set<String> _collectTypes(MarkdownSyntaxNode node) {
     out.addAll(_collectTypes(child));
   }
   return out;
+}
+
+MarkdownRenderNode _renderNode(
+  String raw, {
+  String type = 'paragraph',
+  int startByte = 0,
+}) {
+  return MarkdownRenderNode(
+    type: type,
+    depth: 0,
+    startByte: startByte,
+    endByte: startByte + raw.length,
+    startRow: 0,
+    endRow: 0,
+    raw: raw,
+    content: raw,
+  );
 }

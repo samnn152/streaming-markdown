@@ -1,3 +1,13 @@
+## 0.1.6
+
+- Add a standalone Markdown cases catalog example with streaming playback.
+- Fix tappable links when text selection is enabled.
+- Fix tappable inline links in rendered HTML blocks.
+- Improve HTML table sizing and spacing.
+- Render footnote references and definitions with numbered markers.
+- Align task-list checkbox markers with item text.
+- Replace Vietnamese-facing strings with English copy.
+
 ## 0.1.5
 
 - Fix dangling library-level DartDoc attachment in package entrypoint.
