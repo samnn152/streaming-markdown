@@ -53,7 +53,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
   bool _workerStarted = false;
   bool _loading = true;
   bool _showSource = true;
-  bool _selectionEnabled = true;
+  bool _selectionEnabled = false;
   bool _debugTokens = false;
   String? _error;
   int _streamedCharacters = 0;
@@ -192,7 +192,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
     if (_selectedCase < 0) {
       return _allCasesMarkdown;
     }
-    return _markdownCases[_selectedCase].markdown;
+    return _displayMarkdownCases[_selectedCase].markdown;
   }
 
   String get _visibleMarkdown {
@@ -210,7 +210,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
     if (_selectedCase < 0) {
       return 'All supported cases';
     }
-    return _markdownCases[_selectedCase].title;
+    return _displayMarkdownCases[_selectedCase].title;
   }
 
   void _selectCase(int index) {
@@ -351,7 +351,7 @@ class _CaseList extends StatelessWidget {
       color: colors.surface,
       child: ListView.builder(
         padding: const EdgeInsets.all(8),
-        itemCount: _markdownCases.length + 1,
+        itemCount: _displayMarkdownCases.length + 1,
         scrollDirection: MediaQuery.sizeOf(context).width >= 980
             ? Axis.vertical
             : Axis.horizontal,
@@ -363,10 +363,10 @@ class _CaseList extends StatelessWidget {
               : selectedIndex == caseIndex;
           final String title = allCases
               ? 'All cases'
-              : _markdownCases[caseIndex].title;
+              : _displayMarkdownCases[caseIndex].title;
           final String group = allCases
-              ? '${_markdownCases.length} sections'
-              : _markdownCases[caseIndex].group;
+              ? '${_regularMarkdownCases.length} sections'
+              : _displayMarkdownCases[caseIndex].group;
 
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
@@ -568,38 +568,58 @@ class _PreviewPaneState extends State<_PreviewPane> {
                   controller: _previewScrollController,
                   automaticallyInheritForPlatforms: TargetPlatform.values
                       .toSet(),
-                  child: StreamingMarkdownRenderView(
-                    nodes: widget.nodes,
-                    emptyPlaceholder: '',
-                    padding: const EdgeInsets.all(20),
-                    enableTextSelection: widget.enableSelection,
-                    tokenArrivalDelay: const Duration(milliseconds: 350),
-                    tokenFadeInDuration: const Duration(milliseconds: 1800),
-                    debugTokenHighlight: widget.debugTokens,
-                    allowUnclosedInlineDelimiters: true,
-                    onLinkTap: widget.onLinkTap,
-                    markdownTheme: StreamingMarkdownThemeData(
-                      blockSpacing: 16,
-                      quoteBackgroundColor: Color(0x111F7A68),
-                      codeBlockBackgroundColor: Color(0xFF0F172A),
-                      codeBlockHeaderBackgroundColor: Color(0xFF1E293B),
-                      metadataBackgroundColor: Color(0xFFF8FAFC),
-                      metadataBorderColor: Color(0xFFCBD5E1),
-                      metadataTextStyle: TextStyle(
-                        color: Color(0xFF334155),
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                      ),
-                      tableBorderColor: colors.outlineVariant,
-                      tableHeaderBackgroundColor: Color.alphaBlend(
-                        colors.onSurface.withValues(alpha: 0.06),
-                        colors.surface,
-                      ),
-                      thematicBreakColor: Color(0xFF94A3B8),
-                      imageErrorBackgroundColor: Color(0xFFE2E8F0),
-                      imageErrorTextStyle: TextStyle(color: Color(0xFF334155)),
-                      selectionColor: Color(0x5538BDF8),
-                    ),
+                  child: Builder(
+                    builder: (BuildContext context) {
+                      final Widget scrollContent = CustomScrollView(
+                        controller: _previewScrollController,
+                        slivers: <Widget>[
+                          StreamingMarkdownRenderView(
+                            nodes: widget.nodes,
+                            emptyPlaceholder: '',
+                            sliver: true,
+                            padding: const EdgeInsets.all(20),
+                            enableTextSelection: widget.enableSelection,
+                            tokenArrivalDelay: const Duration(
+                              milliseconds: 350,
+                            ),
+                            tokenFadeInDuration: const Duration(
+                              milliseconds: 1800,
+                            ),
+                            debugTokenHighlight: widget.debugTokens,
+                            allowUnclosedInlineDelimiters: true,
+                            onLinkTap: widget.onLinkTap,
+                            markdownTheme: StreamingMarkdownThemeData(
+                              blockSpacing: 16,
+                              quoteBackgroundColor: Color(0x111F7A68),
+                              codeBlockBackgroundColor: Color(0xFF0F172A),
+                              codeBlockHeaderBackgroundColor: Color(0xFF1E293B),
+                              metadataBackgroundColor: Color(0xFFF8FAFC),
+                              metadataBorderColor: Color(0xFFCBD5E1),
+                              metadataTextStyle: TextStyle(
+                                color: Color(0xFF334155),
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                              ),
+                              tableBorderColor: colors.outlineVariant,
+                              tableHeaderBackgroundColor: Color.alphaBlend(
+                                colors.onSurface.withValues(alpha: 0.06),
+                                colors.surface,
+                              ),
+                              thematicBreakColor: Color(0xFF94A3B8),
+                              imageErrorBackgroundColor: Color(0xFFE2E8F0),
+                              imageErrorTextStyle: TextStyle(
+                                color: Color(0xFF334155),
+                              ),
+                              selectionColor: Color(0x5538BDF8),
+                            ),
+                          ),
+                        ],
+                      );
+                      if (!widget.enableSelection) {
+                        return scrollContent;
+                      }
+                      return SelectionArea(child: scrollContent);
+                    },
                   ),
                 )
               : Center(
@@ -760,7 +780,7 @@ class _MarkdownCase {
   final String markdown;
 }
 
-final List<_MarkdownCase> _markdownCases = <_MarkdownCase>[
+final List<_MarkdownCase> _regularMarkdownCases = <_MarkdownCase>[
   const _MarkdownCase(
     title: 'Front matter and separators',
     group: 'Metadata',
@@ -991,16 +1011,82 @@ Multiple references can point at separate definitions.[^renderer]
   ),
 ];
 
+final _MarkdownCase _stressMarkdownCase = _MarkdownCase(
+  title: 'Stress test large markdown',
+  group: 'Stress',
+  markdown: _demoStressMarkdown,
+);
+
+final List<_MarkdownCase> _displayMarkdownCases = <_MarkdownCase>[
+  ..._regularMarkdownCases,
+  _stressMarkdownCase,
+];
+
+final String _demoStressMarkdown = _buildDemoStressMarkdown(
+  sections: 80,
+  paragraphRepeats: 3,
+  listItemsPerSection: 5,
+);
+
+String _buildDemoStressMarkdown({
+  required int sections,
+  required int paragraphRepeats,
+  required int listItemsPerSection,
+}) {
+  final StringBuffer out = StringBuffer()
+    ..writeln('# Stress Test (Large Markdown)')
+    ..writeln()
+    ..writeln(
+      'This case is intentionally heavy for render/parse benchmarking in the demo.',
+    )
+    ..writeln();
+
+  for (int i = 1; i <= sections; i++) {
+    out
+      ..writeln('## Section $i')
+      ..writeln();
+
+    for (int p = 0; p < paragraphRepeats; p++) {
+      out
+        ..writeln(
+          'Paragraph $p in section $i with **bold**, *italic*, '
+          '[link](https://example.com/$i/$p), and `inline_code`.',
+        )
+        ..writeln();
+    }
+
+    out
+      ..writeln('| Col A | Col B | Col C |')
+      ..writeln('| --- | --- | --- |')
+      ..writeln('| $i | ${i + 1} | ${i + 2} |')
+      ..writeln('| ${i + 3} | ${i + 4} | ${i + 5} |')
+      ..writeln();
+
+    for (int l = 1; l <= listItemsPerSection; l++) {
+      out.writeln('- [ ] task item $l in section $i');
+    }
+    out
+      ..writeln()
+      ..writeln('```dart')
+      ..writeln('final section = $i;')
+      ..writeln("print('stress section: \$section');")
+      ..writeln('```')
+      ..writeln();
+  }
+
+  return out.toString();
+}
+
 String get _allCasesMarkdown {
   final StringBuffer buffer = StringBuffer();
-  for (int i = 0; i < _markdownCases.length; i++) {
+  for (int i = 0; i < _regularMarkdownCases.length; i++) {
     if (i > 0) {
       buffer
         ..writeln()
         ..writeln('---')
         ..writeln();
     }
-    buffer.write(_markdownCases[i].markdown.trim());
+    buffer.write(_regularMarkdownCases[i].markdown.trim());
     buffer.writeln();
   }
   return buffer.toString();

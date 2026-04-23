@@ -106,6 +106,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     required this.nodes,
     this.emptyPlaceholder = '',
     this.padding = const EdgeInsets.all(12),
+    this.sliver = false,
     this.allowUnclosedInlineDelimiters = false,
     this.tokenArrivalDelay = Duration.zero,
     this.tokenFadeInRelativeToDelay = 0,
@@ -121,6 +122,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
   final List<MarkdownRenderNode> nodes;
   final String emptyPlaceholder;
   final EdgeInsetsGeometry padding;
+  final bool sliver;
   final bool allowUnclosedInlineDelimiters;
   final Duration tokenArrivalDelay;
   final double tokenFadeInRelativeToDelay;
@@ -152,7 +154,16 @@ class StreamingMarkdownRenderView extends StatelessWidget
   Widget build(BuildContext context) {
     final List<MarkdownRenderNode> blocks = _collectRenderableBlocks(nodes);
     if (blocks.isEmpty) {
-      return Center(child: Text(emptyPlaceholder, textAlign: TextAlign.center));
+      final Widget empty = Center(
+        child: Text(emptyPlaceholder, textAlign: TextAlign.center),
+      );
+      if (!sliver) {
+        return empty;
+      }
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: Padding(padding: padding, child: empty),
+      );
     }
 
     final Map<String, String> linkReferences = _extractLinkReferences(nodes);
@@ -160,32 +171,39 @@ class StreamingMarkdownRenderView extends StatelessWidget
     final String refsDigest = _linkReferencesDigest(linkReferences);
     final String renderConfigDigest = _renderConfigDigest(context);
 
-    final Widget content = SingleChildScrollView(
-      padding: padding,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          for (int i = 0; i < blocks.length; i++) ...[
-            _BlockRenderHost(
-              key: ValueKey<String>(_blockIdentity(blocks[i])),
-              signature: _blockSignature(
-                blocks[i],
-                refsDigest,
-                renderConfigDigest,
-              ),
-              node: blocks[i],
-              linkReferences: linkReferences,
-              footnoteNumbers: footnoteNumbers,
-              builder: _buildRenderedBlockWithRefs,
-            ),
-            if (i < blocks.length - 1)
-              SizedBox(height: markdownTheme.blockSpacing),
-          ],
-        ],
-      ),
-    );
+    final List<Widget> blockChildren = <Widget>[
+      for (int i = 0; i < blocks.length; i++) ...[
+        _BlockRenderHost(
+          key: ValueKey<String>(_blockIdentity(blocks[i])),
+          signature: _blockSignature(
+            blocks[i],
+            refsDigest,
+            renderConfigDigest,
+          ),
+          node: blocks[i],
+          linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
+          builder: _buildRenderedBlockWithRefs,
+        ),
+        if (i < blocks.length - 1) SizedBox(height: markdownTheme.blockSpacing),
+      ],
+    ];
 
-    if (!enableTextSelection) {
+    final Widget content = sliver
+        ? SliverPadding(
+            padding: padding,
+            sliver:
+                SliverList(delegate: SliverChildListDelegate(blockChildren)),
+          )
+        : Padding(
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: blockChildren,
+            ),
+          );
+
+    if (!enableTextSelection || sliver) {
       return content;
     }
     return SelectionArea(child: content);
@@ -458,6 +476,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
       ..write(debugTokenHighlight)
       ..write(':')
       ..write(enableTextSelection)
+      ..write(':')
+      ..write(sliver)
       ..write(':')
       ..write(padding.hashCode)
       ..write(':')
@@ -1131,6 +1151,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
         markdownTheme.paragraphTextStyle ??
         Theme.of(context).textTheme.bodyLarge ??
         const TextStyle(fontSize: 16);
+    final bool showSelectionOverlay = enableTextSelection;
+    final bool animatePerWord = !showSelectionOverlay;
     final List<_InlineToken> tokens = _parseInlineTokens(
       normalized,
       references: linkReferences,
@@ -1243,7 +1265,10 @@ class StreamingMarkdownRenderView extends StatelessWidget
           startTokenIndex: visualTokenIndex,
           fadeDuration: tokenFadeDuration,
           fadeCurve: tokenFadeInCurve,
-          onTap: () => _onLinkPressed(context, token.linkUrl!),
+          animatePerWord: animatePerWord,
+          onTap: showSelectionOverlay
+              ? null
+              : () => _onLinkPressed(context, token.linkUrl!),
         );
         continue;
       }
@@ -1254,6 +1279,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
         startTokenIndex: visualTokenIndex,
         fadeDuration: tokenFadeDuration,
         fadeCurve: tokenFadeInCurve,
+        animatePerWord: animatePerWord,
       );
     }
 
@@ -1263,16 +1289,37 @@ class StreamingMarkdownRenderView extends StatelessWidget
       textScaler: MediaQuery.textScalerOf(context),
       text: TextSpan(style: resolvedStyle, children: spans),
     );
-    if (!enableTextSelection) {
-      return animatedRichText;
+    final Widget visibleAnimatedLayer =
+        showSelectionOverlay && tokenFadeDuration > Duration.zero
+            ? _FadeInTokenHost(
+                key: ValueKey<String>(
+                  'sel_inline_${normalized.hashCode}_${resolvedStyle.hashCode}',
+                ),
+                duration: tokenFadeDuration,
+                curve: tokenFadeInCurve,
+                child: animatedRichText,
+              )
+            : animatedRichText;
+    if (!showSelectionOverlay) {
+      return visibleAnimatedLayer;
     }
-    return _SelectableInlineTextOverlay(
-      tokens: tokens,
-      baseStyle: resolvedStyle,
-      footnoteNumbers: footnoteNumbers,
-      textScaler: MediaQuery.textScalerOf(context),
-      selectionColor: markdownTheme.selectionColor ?? const Color(0x6658A6FF),
-      onLinkTap: (String url) => _onLinkPressed(context, url),
+
+    return Stack(
+      alignment: Alignment.centerLeft,
+      children: [
+        Positioned.fill(
+          child: _SelectableInlineTextOverlay(
+            tokens: tokens,
+            baseStyle: resolvedStyle,
+            footnoteNumbers: footnoteNumbers,
+            textScaler: MediaQuery.textScalerOf(context),
+            selectionColor:
+                markdownTheme.selectionColor ?? const Color(0x6658A6FF),
+            onLinkTap: (String url) => _onLinkPressed(context, url),
+          ),
+        ),
+        IgnorePointer(child: visibleAnimatedLayer),
+      ],
     );
   }
 
@@ -1292,8 +1339,14 @@ class StreamingMarkdownRenderView extends StatelessWidget
     required int startTokenIndex,
     required Duration fadeDuration,
     required Curve fadeCurve,
+    required bool animatePerWord,
     VoidCallback? onTap,
   }) {
+    if (!animatePerWord) {
+      spans.add(TextSpan(text: text, style: style));
+      return startTokenIndex + 1;
+    }
+
     int tokenIndex = startTokenIndex;
     for (final RegExpMatch match in RegExp(r'\S+|\s+').allMatches(text)) {
       final String piece = match.group(0) ?? '';
@@ -1510,6 +1563,9 @@ class _SelectableInlineTextOverlayState
 
 TextStyle _selectionOverlayStyle(TextStyle style) {
   return style.copyWith(
+    color: Colors.transparent,
+    backgroundColor: Colors.transparent,
+    decorationColor: Colors.transparent,
     shadows: const <Shadow>[],
   );
 }
