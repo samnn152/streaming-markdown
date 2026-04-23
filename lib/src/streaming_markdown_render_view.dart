@@ -1266,23 +1266,13 @@ class StreamingMarkdownRenderView extends StatelessWidget
     if (!enableTextSelection) {
       return animatedRichText;
     }
-
-    return Stack(
-      alignment: Alignment.centerLeft,
-      children: [
-        animatedRichText,
-        Positioned.fill(
-          child: _SelectableInlineTextOverlay(
-            tokens: tokens,
-            baseStyle: resolvedStyle,
-            footnoteNumbers: footnoteNumbers,
-            textScaler: MediaQuery.textScalerOf(context),
-            selectionColor:
-                markdownTheme.selectionColor ?? const Color(0x6658A6FF),
-            onLinkTap: (String url) => _onLinkPressed(context, url),
-          ),
-        ),
-      ],
+    return _SelectableInlineTextOverlay(
+      tokens: tokens,
+      baseStyle: resolvedStyle,
+      footnoteNumbers: footnoteNumbers,
+      textScaler: MediaQuery.textScalerOf(context),
+      selectionColor: markdownTheme.selectionColor ?? const Color(0x6658A6FF),
+      onLinkTap: (String url) => _onLinkPressed(context, url),
     );
   }
 
@@ -1520,9 +1510,6 @@ class _SelectableInlineTextOverlayState
 
 TextStyle _selectionOverlayStyle(TextStyle style) {
   return style.copyWith(
-    color: Colors.transparent,
-    backgroundColor: Colors.transparent,
-    decorationColor: Colors.transparent,
     shadows: const <Shadow>[],
   );
 }

@@ -551,6 +551,8 @@ class _PreviewPaneState extends State<_PreviewPane> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
     return Column(
       children: [
         _ParserStatusBar(
@@ -571,12 +573,12 @@ class _PreviewPaneState extends State<_PreviewPane> {
                     emptyPlaceholder: '',
                     padding: const EdgeInsets.all(20),
                     enableTextSelection: widget.enableSelection,
-                    tokenArrivalDelay: const Duration(milliseconds: 35),
-                    tokenFadeInDuration: const Duration(milliseconds: 180),
+                    tokenArrivalDelay: const Duration(milliseconds: 350),
+                    tokenFadeInDuration: const Duration(milliseconds: 1800),
                     debugTokenHighlight: widget.debugTokens,
                     allowUnclosedInlineDelimiters: true,
                     onLinkTap: widget.onLinkTap,
-                    markdownTheme: const StreamingMarkdownThemeData(
+                    markdownTheme: StreamingMarkdownThemeData(
                       blockSpacing: 16,
                       quoteBackgroundColor: Color(0x111F7A68),
                       codeBlockBackgroundColor: Color(0xFF0F172A),
@@ -588,8 +590,11 @@ class _PreviewPaneState extends State<_PreviewPane> {
                         fontFamily: 'monospace',
                         fontSize: 12,
                       ),
-                      tableBorderColor: Color(0xFFCBD5E1),
-                      tableHeaderBackgroundColor: Color(0xFFE2E8F0),
+                      tableBorderColor: colors.outlineVariant,
+                      tableHeaderBackgroundColor: Color.alphaBlend(
+                        colors.onSurface.withValues(alpha: 0.06),
+                        colors.surface,
+                      ),
                       thematicBreakColor: Color(0xFF94A3B8),
                       imageErrorBackgroundColor: Color(0xFFE2E8F0),
                       imageErrorTextStyle: TextStyle(color: Color(0xFF334155)),
