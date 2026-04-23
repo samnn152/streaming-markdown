@@ -1597,15 +1597,18 @@ class _BlockRenderHost extends StatefulWidget {
   State<_BlockRenderHost> createState() => _BlockRenderHostState();
 }
 
-class _BlockRenderHostState extends State<_BlockRenderHost> {
+class _BlockRenderHostState extends State<_BlockRenderHost>
+    with AutomaticKeepAliveClientMixin<_BlockRenderHost> {
   String? _cachedSignature;
   Widget? _cachedChild;
 
   @override
+  bool get wantKeepAlive => true;
+
+  @override
   void didUpdateWidget(covariant _BlockRenderHost oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.builder != widget.builder ||
-        oldWidget.signature != widget.signature) {
+    if (oldWidget.signature != widget.signature) {
       _cachedSignature = null;
       _cachedChild = null;
     }
@@ -1613,6 +1616,7 @@ class _BlockRenderHostState extends State<_BlockRenderHost> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     if (_cachedChild == null || _cachedSignature != widget.signature) {
       _cachedChild = widget.builder(
         context,
