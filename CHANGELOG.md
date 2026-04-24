@@ -1,3 +1,10 @@
+## 0.2.0
+
+- Add absolute-timeline token reveal scheduling so animation progress stays correct even when tokens build late/offscreen.
+- Add customizable per-token animation API via `tokenAnimationBuilder(BuildContext, StreamingMarkdownAnimatedToken)`.
+- Add demo selector with 10 token animation presets.
+- Rewrite README in template format and refresh parser/renderer-focused usage documentation.
+
 ## 0.1.6
 
 - Add a standalone Markdown cases catalog example with streaming playback.

@@ -1,167 +1,223 @@
-# animated_streaming_markdown
+<a id="readme-top"></a>
 
-`animated_streaming_markdown` is a Flutter package for streaming Markdown
-workflows with:
+[![Contributors][contributors-shield]][contributors-url]
+[![Forks][forks-shield]][forks-url]
+[![Stargazers][stars-shield]][stars-url]
+[![Issues][issues-shield]][issues-url]
+[![License][license-shield]][license-url]
+[![Pub Version][pub-shield]][pub-url]
 
-- native tree-sitter parsing (FFI)
-- incremental parse sessions for append-heavy updates
-- streaming-friendly Flutter rendering (`StreamingMarkdownRenderView`)
-- pure-Dart fallback parsing utilities (`RopeString`, `RopeMarkdownParser`)
+<br />
+<div align="center">
+  <a href="https://github.com/samnn152/streaming-markdown">
+    <img src="https://raw.githubusercontent.com/flutter/website/main/src/_assets/image/flutter-lockup-bg.jpg" alt="Logo" width="120" height="80">
+  </a>
 
-## Requirements
+<h3 align="center">animated_streaming_markdown</h3>
 
-- Dart SDK: `>=2.17.0 <4.0.0`
-- Flutter SDK: `>=3.0.0`
-- Runtime targets: Android, iOS, macOS, Linux, Windows
-- Web: not supported as a runtime target
+  <p align="center">
+    Streaming Markdown parser + renderer for Flutter, optimized for incremental append flows.
+    <br />
+    <a href="https://github.com/samnn152/streaming-markdown"><strong>Explore the docs »</strong></a>
+    <br />
+    <br />
+    <a href="https://github.com/samnn152/streaming-markdown/tree/main/example">View Demo</a>
+    &middot;
+    <a href="https://github.com/samnn152/streaming-markdown/issues/new?labels=bug">Report Bug</a>
+    &middot;
+    <a href="https://github.com/samnn152/streaming-markdown/issues/new?labels=enhancement">Request Feature</a>
+  </p>
+</div>
 
-### Platform Requirements
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li>
+      <a href="#about-the-project">About The Project</a>
+      <ul>
+        <li><a href="#built-with">Built With</a></li>
+      </ul>
+    </li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+        <li><a href="#installation">Installation</a></li>
+      </ul>
+    </li>
+    <li><a href="#usage">Usage</a></li>
+    <li><a href="#roadmap">Roadmap</a></li>
+    <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#license">License</a></li>
+    <li><a href="#contact">Contact</a></li>
+    <li><a href="#acknowledgments">Acknowledgments</a></li>
+  </ol>
+</details>
 
-- Android: Flutter Android toolchain and Android NDK available for FFI/native build steps.
-- iOS: Xcode + CocoaPods toolchain.
-- macOS: Xcode + CocoaPods toolchain.
-- Linux: Flutter Linux desktop enabled, plus C/C++ desktop build tools (`cmake`, compiler toolchain).
-- Windows: Flutter Windows desktop enabled, plus Visual Studio C++ desktop toolchain.
-- Web: intentionally unsupported for production runtime use; native APIs are unavailable.
+## About The Project
 
-## Installation
+`animated_streaming_markdown` provides 2 main layers:
 
-Add dependency to `pubspec.yaml`:
+- **Parser**: `StreamingMarkdownParseWorker` for incremental `set`/`append` requests
+- **Renderer**: `StreamingMarkdownRenderView` for block rendering + token arrival animations
 
-```yaml
-dependencies:
-  animated_streaming_markdown: ^0.1.6
-```
+It is designed for chat-like or streaming text interfaces where markdown arrives progressively and needs stable UI updates.
 
-Install packages:
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-```bash
-flutter pub get
-```
+### Built With
+
+* [![Flutter][Flutter-badge]][Flutter-url]
+* [![Dart][Dart-badge]][Dart-url]
+* [![Tree-sitter][TreeSitter-badge]][TreeSitter-url]
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Getting Started
+
+### Prerequisites
+
+- Flutter `>=3.0.0`
+- Dart SDK `>=2.17.0 <4.0.0`
+- Native toolchain for your target platform (Android/iOS/macOS/Linux/Windows)
+
+### Installation
+
+1. Add dependency:
+   ```yaml
+   dependencies:
+     animated_streaming_markdown: ^0.2.0
+   ```
+2. Install packages:
+   ```sh
+   flutter pub get
+   ```
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Usage
 
-### 1. Streaming parse + render in UI
+### 1) Start parser worker and stream markdown
 
 ```dart
-import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
-import 'package:flutter/material.dart';
+final worker = StreamingMarkdownParseWorker();
+await worker.start();
 
-class StreamingMarkdownPane extends StatefulWidget {
-  const StreamingMarkdownPane({super.key});
+final setResult = await worker.request(
+  op: 'set',
+  text: '# Hello',
+  includeNodes: true,
+);
 
-  @override
-  State<StreamingMarkdownPane> createState() => _StreamingMarkdownPaneState();
-}
-
-class _StreamingMarkdownPaneState extends State<StreamingMarkdownPane> {
-  final StreamingMarkdownParseWorker _worker = StreamingMarkdownParseWorker();
-  List<MarkdownRenderNode> _nodes = const <MarkdownRenderNode>[];
-  bool _started = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _start();
-  }
-
-  Future<void> _start() async {
-    await _worker.start();
-    setState(() {
-      _started = true;
-    });
-  }
-
-  Future<void> setMarkdown(String text) async {
-    if (!_started) return;
-    final result = await _worker.request(
-      op: 'set',
-      text: text,
-      includeNodes: true,
-    );
-    setState(() {
-      _nodes = result.renderNodes;
-    });
-  }
-
-  Future<void> appendMarkdownChunk(String chunk) async {
-    if (!_started) return;
-    final result = await _worker.request(
-      op: 'append',
-      text: chunk,
-      includeNodes: true,
-    );
-    setState(() {
-      _nodes = result.renderNodes;
-    });
-  }
-
-  @override
-  void dispose() {
-    _worker.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamingMarkdownRenderView(
-      nodes: _nodes,
-      enableTextSelection: true,
-      tokenArrivalDelay: const Duration(milliseconds: 25),
-      tokenFadeInDuration: const Duration(milliseconds: 140),
-    );
-  }
-}
+final appendResult = await worker.request(
+  op: 'append',
+  text: '\n\nStreaming **markdown** chunk...',
+  includeNodes: true,
+);
 ```
 
-### 2. Pure-Dart parsing without native APIs
+### 2) Render nodes with `StreamingMarkdownRenderView`
 
 ```dart
-import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
-
-final RopeString rope = RopeString();
-rope.append('# Hello');
-rope.append('\n\nParagraph');
-
-final MarkdownDocument doc = const RopeMarkdownParser().parse(rope);
-print(doc.blocks.length);
+StreamingMarkdownRenderView(
+  nodes: appendResult.renderNodes,
+  sliver: true,
+  tokenArrivalDelay: const Duration(milliseconds: 180),
+  tokenFadeInDuration: const Duration(milliseconds: 240),
+  enableTextSelection: true,
+  tokenAnimationBuilder: (
+    BuildContext context,
+    StreamingMarkdownAnimatedToken token,
+  ) {
+    final t = Curves.easeOutCubic.transform(token.value);
+    return Transform.translate(
+      offset: Offset(0, (1 - t) * 8),
+      child: Opacity(opacity: t, child: token.child),
+    );
+  },
+);
 ```
 
-### 3. Native parser usage with availability check
+### 3) Important APIs
 
-```dart
-import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
+- `StreamingMarkdownParseWorker.start()`
+- `StreamingMarkdownParseWorker.request(op, text, includeNodes)`
+- `StreamingMarkdownParseWorker.dispose()`
+- `StreamingMarkdownRenderView(...)`
+  - `nodes`
+  - `sliver`
+  - `tokenArrivalDelay`
+  - `tokenFadeInDuration` / `tokenFadeInRelativeToDelay`
+  - `tokenAnimationBuilder`
+  - `onTokenArrivalWait`
+  - `enableTextSelection`
+  - `customBlockBuilder`
 
-if (isStreamingMarkdownNativeLibraryAvailable) {
-  final parser = NativeIncrementalMarkdownParser.create();
-  parser.setText('# Title');
-  final count = parser.blockCount();
-  parser.dispose();
-  print(count);
-}
-```
+For a complete integration sample, check [`example/lib/markdown_cases_demo.dart`](example/lib/markdown_cases_demo.dart).
 
-## Rendering Notes
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-- `StreamingMarkdownRenderView` accepts `List<MarkdownRenderNode>` and renders block-by-block.
-- HTML block nodes are rendered with pure Flutter widgets (no embedded WebView).
-- HTML blocks wrap content height naturally instead of using a fixed viewport.
+## Roadmap
 
-## Example App
+- [x] Incremental parser worker (`set` / `append`)
+- [x] Streaming renderer for markdown block nodes
+- [x] Per-token custom animation builder API
+- [x] Example with multiple animation presets
+- [ ] More parser/renderer benchmark scenarios
 
-See `example/` for a dual-pane chat demo and end-to-end streaming usage.
+See the [open issues][issues-url] for proposed features and known issues.
 
-## Bundled Tree-sitter Dependencies
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-This package vendors only the required native sources under `packages/`:
+## Contributing
 
-- `packages/tree-sitter` (tree-sitter runtime)
-- `packages/tree-sitter-markdown` (block + inline markdown grammars)
+Contributions are welcome.
 
-Both bundled upstream components are MIT-licensed. This package remains Apache-2.0.
+1. Fork the project
+2. Create your branch (`git checkout -b feature/your-feature`)
+3. Commit your changes (`git commit -m "Add your feature"`)
+4. Push branch (`git push origin feature/your-feature`)
+5. Open a Pull Request
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## License
 
-`animated_streaming_markdown` is licensed under Apache License 2.0. See [LICENSE](LICENSE).
+Distributed under the Apache-2.0 License. See [`LICENSE`](LICENSE) for details.
 
-Third-party license details are listed in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Contact
+
+- Repository: [https://github.com/samnn152/streaming-markdown](https://github.com/samnn152/streaming-markdown)
+- Issues: [https://github.com/samnn152/streaming-markdown/issues](https://github.com/samnn152/streaming-markdown/issues)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+## Acknowledgments
+
+* [Tree-sitter](https://tree-sitter.github.io/tree-sitter/)
+* [tree-sitter-markdown](https://github.com/tree-sitter-grammars/tree-sitter-markdown)
+* [Flutter](https://flutter.dev/)
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- MARKDOWN LINKS & IMAGES -->
+[contributors-shield]: https://img.shields.io/github/contributors/samnn152/streaming-markdown.svg?style=for-the-badge
+[contributors-url]: https://github.com/samnn152/streaming-markdown/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/samnn152/streaming-markdown.svg?style=for-the-badge
+[forks-url]: https://github.com/samnn152/streaming-markdown/network/members
+[stars-shield]: https://img.shields.io/github/stars/samnn152/streaming-markdown.svg?style=for-the-badge
+[stars-url]: https://github.com/samnn152/streaming-markdown/stargazers
+[issues-shield]: https://img.shields.io/github/issues/samnn152/streaming-markdown.svg?style=for-the-badge
+[issues-url]: https://github.com/samnn152/streaming-markdown/issues
+[license-shield]: https://img.shields.io/github/license/samnn152/streaming-markdown.svg?style=for-the-badge
+[license-url]: https://github.com/samnn152/streaming-markdown/blob/main/LICENSE
+[pub-shield]: https://img.shields.io/pub/v/animated_streaming_markdown?style=for-the-badge
+[pub-url]: https://pub.dev/packages/animated_streaming_markdown
+[Flutter-badge]: https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white
+[Flutter-url]: https://flutter.dev/
+[Dart-badge]: https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white
+[Dart-url]: https://dart.dev/
+[TreeSitter-badge]: https://img.shields.io/badge/Tree--sitter-2F2F2F?style=for-the-badge
+[TreeSitter-url]: https://tree-sitter.github.io/tree-sitter/
