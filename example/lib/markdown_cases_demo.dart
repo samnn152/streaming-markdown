@@ -621,52 +621,89 @@ class _PreviewPaneState extends State<_PreviewPane> {
                       .toSet(),
                   child: Builder(
                     builder: (BuildContext context) {
-                      final Widget scrollContent = CustomScrollView(
-                        key: _scrollViewKey,
-                        controller: _previewScrollController,
-                        slivers: <Widget>[
-                          StreamingMarkdownRenderView(
-                            nodes: widget.nodes,
-                            emptyPlaceholder: '',
-                            sliver: true,
-                            padding: const EdgeInsets.all(20),
-                            enableTextSelection: widget.enableSelection,
-                            tokenArrivalDelay: const Duration(
-                              milliseconds: 350,
-                            ),
-                            tokenFadeInDuration: const Duration(
-                              milliseconds: 1800,
-                            ),
-                            tokenAnimationBuilder: widget.tokenAnimationBuilder,
-                            debugTokenHighlight: widget.debugTokens,
-                            allowUnclosedInlineDelimiters: true,
-                            onLinkTap: widget.onLinkTap,
-                            markdownTheme: StreamingMarkdownThemeData(
-                              blockSpacing: 16,
-                              quoteBackgroundColor: Color(0x111F7A68),
-                              codeBlockBackgroundColor: Color(0xFF0F172A),
-                              codeBlockHeaderBackgroundColor: Color(0xFF1E293B),
-                              metadataBackgroundColor: Color(0xFFF8FAFC),
-                              metadataBorderColor: Color(0xFFCBD5E1),
-                              metadataTextStyle: TextStyle(
-                                color: Color(0xFF334155),
-                                fontFamily: 'monospace',
-                                fontSize: 12,
-                              ),
-                              tableBorderColor: colors.outlineVariant,
-                              tableHeaderBackgroundColor: Color.alphaBlend(
-                                colors.onSurface.withValues(alpha: 0.06),
-                                colors.surface,
-                              ),
-                              thematicBreakColor: Color(0xFF94A3B8),
-                              imageErrorBackgroundColor: Color(0xFFE2E8F0),
-                              imageErrorTextStyle: TextStyle(
-                                color: Color(0xFF334155),
-                              ),
-                              selectionColor: Color(0x5538BDF8),
-                            ),
-                          ),
-                        ],
+                      final Widget scrollContent = LayoutBuilder(
+                        builder:
+                            (
+                              BuildContext context,
+                              BoxConstraints viewportConstraints,
+                            ) {
+                              return SingleChildScrollView(
+                                key: _scrollViewKey,
+                                controller: _previewScrollController,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    minHeight: viewportConstraints.maxHeight,
+                                  ),
+                                  child: Align(
+                                    alignment: Alignment.bottomLeft,
+                                    child: SizedBox(
+                                      width: double.infinity,
+                                      child: StreamingMarkdownRenderView(
+                                        nodes: widget.nodes,
+                                        emptyPlaceholder: '',
+                                        sliver: false,
+                                        padding: const EdgeInsets.all(20),
+                                        // Keep renderer config stable across selection toggles.
+                                        enableTextSelection: true,
+                                        tokenArrivalDelay: const Duration(
+                                          milliseconds: 350,
+                                        ),
+                                        tokenFadeInDuration: const Duration(
+                                          milliseconds: 1800,
+                                        ),
+                                        tokenAnimationBuilder:
+                                            widget.tokenAnimationBuilder,
+                                        debugTokenHighlight: widget.debugTokens,
+                                        allowUnclosedInlineDelimiters: true,
+                                        onLinkTap: widget.onLinkTap,
+                                        markdownTheme:
+                                            StreamingMarkdownThemeData(
+                                              blockSpacing: 16,
+                                              quoteBackgroundColor: Color(
+                                                0x111F7A68,
+                                              ),
+                                              codeBlockBackgroundColor: Color(
+                                                0xFF0F172A,
+                                              ),
+                                              codeBlockHeaderBackgroundColor:
+                                                  Color(0xFF1E293B),
+                                              metadataBackgroundColor: Color(
+                                                0xFFF8FAFC,
+                                              ),
+                                              metadataBorderColor: Color(
+                                                0xFFCBD5E1,
+                                              ),
+                                              metadataTextStyle: TextStyle(
+                                                color: Color(0xFF334155),
+                                                fontFamily: 'monospace',
+                                                fontSize: 12,
+                                              ),
+                                              tableBorderColor:
+                                                  colors.outlineVariant,
+                                              tableHeaderBackgroundColor:
+                                                  Color.alphaBlend(
+                                                    colors.onSurface.withValues(
+                                                      alpha: 0.06,
+                                                    ),
+                                                    colors.surface,
+                                                  ),
+                                              thematicBreakColor: Color(
+                                                0xFF94A3B8,
+                                              ),
+                                              imageErrorBackgroundColor: Color(
+                                                0xFFE2E8F0,
+                                              ),
+                                              imageErrorTextStyle: TextStyle(
+                                                color: Color(0xFF334155),
+                                              ),
+                                              selectionColor: Color(0x5538BDF8),
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
                       );
                       return SelectionArea(
                         child: widget.enableSelection
