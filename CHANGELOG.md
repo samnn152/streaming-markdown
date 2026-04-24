@@ -1,3 +1,8 @@
+## 0.2.1
+
+- Fix example preview stability when macOS window resizing changes layout.
+- Fix example selection toggle to avoid rebuild side effects during active token animations.
+
 ## 0.2.0
 
 - Add absolute-timeline token reveal scheduling so animation progress stays correct even when tokens build late/offscreen.
