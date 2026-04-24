@@ -3,6 +3,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as html_dom;
 import 'package:html/parser.dart' as html_parser;
+import 'dart:async';
+import 'dart:collection';
 
 import 'markdown_render_node.dart';
 
@@ -109,6 +111,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     this.sliver = false,
     this.allowUnclosedInlineDelimiters = false,
     this.tokenArrivalDelay = Duration.zero,
+    this.onTokenArrivalWait,
     this.tokenFadeInRelativeToDelay = 0,
     this.tokenFadeInDuration,
     this.tokenFadeInCurve = Curves.easeOut,
@@ -125,6 +128,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
   final bool sliver;
   final bool allowUnclosedInlineDelimiters;
   final Duration tokenArrivalDelay;
+  final VoidCallback? onTokenArrivalWait;
   final double tokenFadeInRelativeToDelay;
   final Duration? tokenFadeInDuration;
   final Curve tokenFadeInCurve;
@@ -171,37 +175,29 @@ class StreamingMarkdownRenderView extends StatelessWidget
     final String refsDigest = _linkReferencesDigest(linkReferences);
     final String renderConfigDigest = _renderConfigDigest(context);
 
-    final List<Widget> blockChildren = <Widget>[
-      for (int i = 0; i < blocks.length; i++) ...[
-        _BlockRenderHost(
-          key: ValueKey<String>(_blockIdentity(blocks[i])),
+    final Widget content = _SequencedBlockList(
+      blocks: blocks,
+      sliver: sliver,
+      padding: padding,
+      blockSpacing: markdownTheme.blockSpacing,
+      tokenArrivalDelay: tokenArrivalDelay,
+      onWait: onTokenArrivalWait,
+      blockIdentityBuilder: _blockIdentity,
+      blockBuilder: (BuildContext context, MarkdownRenderNode block) {
+        return _BlockRenderHost(
+          key: ValueKey<String>(_blockIdentity(block)),
           signature: _blockSignature(
-            blocks[i],
+            block,
             refsDigest,
             renderConfigDigest,
           ),
-          node: blocks[i],
+          node: block,
           linkReferences: linkReferences,
           footnoteNumbers: footnoteNumbers,
           builder: _buildRenderedBlockWithRefs,
-        ),
-        if (i < blocks.length - 1) SizedBox(height: markdownTheme.blockSpacing),
-      ],
-    ];
-
-    final Widget content = sliver
-        ? SliverPadding(
-            padding: padding,
-            sliver:
-                SliverList(delegate: SliverChildListDelegate(blockChildren)),
-          )
-        : Padding(
-            padding: padding,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: blockChildren,
-            ),
-          );
+        );
+      },
+    );
 
     if (!enableTextSelection || sliver) {
       return content;
@@ -466,6 +462,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
     final Duration resolvedFade = _resolvedTokenFadeInDuration();
     final StringBuffer buffer = StringBuffer()
       ..write(tokenArrivalDelay.inMicroseconds)
+      ..write(':')
+      ..write(onTokenArrivalWait.hashCode)
       ..write(':')
       ..write(resolvedFade.inMicroseconds)
       ..write(':')
@@ -1162,6 +1160,13 @@ class StreamingMarkdownRenderView extends StatelessWidget
       return Text(normalized, style: resolvedStyle);
     }
     final Duration tokenFadeDuration = _resolvedTokenFadeInDuration();
+    final Duration tokenStaggerDelay = tokenArrivalDelay;
+    final _RevealScheduleScope? scheduleScope = _RevealScheduleScope.maybeOf(
+      context,
+    );
+    final DateTime? tokenScheduleOrigin = scheduleScope?.revealedAt;
+    final Duration resolvedTokenStep =
+        scheduleScope?.tokenArrivalDelay ?? tokenStaggerDelay;
 
     final List<InlineSpan> spans = <InlineSpan>[];
     int visualTokenIndex = 0;
@@ -1265,6 +1270,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
           startTokenIndex: visualTokenIndex,
           fadeDuration: tokenFadeDuration,
           fadeCurve: tokenFadeInCurve,
+          tokenStaggerDelay: resolvedTokenStep,
+          tokenScheduleOrigin: tokenScheduleOrigin,
           animatePerWord: animatePerWord,
           onTap: showSelectionOverlay
               ? null
@@ -1279,6 +1286,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
         startTokenIndex: visualTokenIndex,
         fadeDuration: tokenFadeDuration,
         fadeCurve: tokenFadeInCurve,
+        tokenStaggerDelay: resolvedTokenStep,
+        tokenScheduleOrigin: tokenScheduleOrigin,
         animatePerWord: animatePerWord,
       );
     }
@@ -1297,6 +1306,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
                 ),
                 duration: tokenFadeDuration,
                 curve: tokenFadeInCurve,
+                scheduledStart: tokenScheduleOrigin,
                 child: animatedRichText,
               )
             : animatedRichText;
@@ -1339,6 +1349,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
     required int startTokenIndex,
     required Duration fadeDuration,
     required Curve fadeCurve,
+    required Duration tokenStaggerDelay,
+    required DateTime? tokenScheduleOrigin,
     required bool animatePerWord,
     VoidCallback? onTap,
   }) {
@@ -1348,7 +1360,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     }
 
     int tokenIndex = startTokenIndex;
-    for (final RegExpMatch match in RegExp(r'\S+|\s+').allMatches(text)) {
+    for (final RegExpMatch match in RegExp(r'\S+\s*|\s+').allMatches(text)) {
       final String piece = match.group(0) ?? '';
       if (piece.isEmpty) {
         continue;
@@ -1387,6 +1399,12 @@ class StreamingMarkdownRenderView extends StatelessWidget
           baseline: TextBaseline.alphabetic,
           child: _FadeInTokenHost(
             key: ValueKey<String>('token_${tokenIndex}_${piece.hashCode}'),
+            initialDelay: tokenScheduleOrigin == null
+                ? tokenStaggerDelay * (tokenIndex - startTokenIndex)
+                : Duration.zero,
+            scheduledStart: tokenScheduleOrigin?.add(
+              tokenStaggerDelay * (tokenIndex - startTokenIndex),
+            ),
             duration: fadeDuration,
             curve: fadeCurve,
             child: onTap == null
@@ -1577,6 +1595,222 @@ typedef _BlockBuilder = Widget Function(
   Map<String, int> footnoteNumbers,
 );
 
+class _SequencedBlockList extends StatefulWidget {
+  const _SequencedBlockList({
+    required this.blocks,
+    required this.sliver,
+    required this.padding,
+    required this.blockSpacing,
+    required this.tokenArrivalDelay,
+    required this.blockIdentityBuilder,
+    required this.blockBuilder,
+    this.onWait,
+  });
+
+  final List<MarkdownRenderNode> blocks;
+  final bool sliver;
+  final EdgeInsetsGeometry padding;
+  final double blockSpacing;
+  final Duration tokenArrivalDelay;
+  final VoidCallback? onWait;
+  final String Function(MarkdownRenderNode node) blockIdentityBuilder;
+  final Widget Function(BuildContext context, MarkdownRenderNode node)
+      blockBuilder;
+
+  @override
+  State<_SequencedBlockList> createState() => _SequencedBlockListState();
+}
+
+class _SequencedBlockListState extends State<_SequencedBlockList> {
+  final Set<String> _visibleIds = <String>{};
+  final LinkedHashSet<String> _pendingIds = LinkedHashSet<String>();
+  final Map<String, DateTime> _revealedAt = <String, DateTime>{};
+  Timer? _revealTimer;
+  bool _isWaiting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncSchedule();
+  }
+
+  @override
+  void didUpdateWidget(covariant _SequencedBlockList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncSchedule();
+  }
+
+  @override
+  void dispose() {
+    _revealTimer?.cancel();
+    super.dispose();
+  }
+
+  void _syncSchedule() {
+    final List<String> orderedIds =
+        widget.blocks.map(widget.blockIdentityBuilder).toList(growable: false);
+    final Set<String> activeIds = orderedIds.toSet();
+
+    _visibleIds.removeWhere((String id) => !activeIds.contains(id));
+    _pendingIds.removeWhere((String id) => !activeIds.contains(id));
+    _revealedAt.removeWhere((String id, DateTime _) => !activeIds.contains(id));
+
+    if (orderedIds.isEmpty) {
+      _revealTimer?.cancel();
+      _pendingIds.clear();
+      if (_visibleIds.isNotEmpty && mounted) {
+        setState(() {
+          _visibleIds.clear();
+        });
+      } else {
+        _visibleIds.clear();
+      }
+      _isWaiting = false;
+      return;
+    }
+
+    bool queuedNew = false;
+    for (final String id in orderedIds) {
+      if (_visibleIds.contains(id) || _pendingIds.contains(id)) {
+        continue;
+      }
+      _pendingIds.add(id);
+      queuedNew = true;
+    }
+
+    if (queuedNew) {
+      _isWaiting = false;
+      if (_revealTimer == null) {
+        _drainQueue();
+      }
+      return;
+    }
+
+    if (_pendingIds.isEmpty && _revealTimer == null) {
+      _enterWaiting();
+    }
+  }
+
+  void _drainQueue() {
+    if (!mounted) {
+      return;
+    }
+    if (_pendingIds.isEmpty) {
+      _enterWaiting();
+      return;
+    }
+
+    final String nextId = _pendingIds.first;
+    _pendingIds.remove(nextId);
+    final MarkdownRenderNode? revealedNode = _nodeForId(nextId);
+    final DateTime revealedAt = DateTime.now();
+    setState(() {
+      _visibleIds.add(nextId);
+      _revealedAt[nextId] = revealedAt;
+    });
+
+    if (_pendingIds.isEmpty) {
+      _enterWaiting();
+      return;
+    }
+
+    final Duration delay = _nextDequeueDelayAfterReveal(revealedNode);
+    _revealTimer = Timer(delay, () {
+      _revealTimer = null;
+      _drainQueue();
+    });
+  }
+
+  MarkdownRenderNode? _nodeForId(String id) {
+    for (final MarkdownRenderNode node in widget.blocks) {
+      if (widget.blockIdentityBuilder(node) == id) {
+        return node;
+      }
+    }
+    return null;
+  }
+
+  Duration _nextDequeueDelayAfterReveal(MarkdownRenderNode? node) {
+    if (widget.tokenArrivalDelay <= Duration.zero || node == null) {
+      return Duration.zero;
+    }
+    final int tokens = _tokenCountForNode(node);
+    if (tokens <= 1) {
+      return widget.tokenArrivalDelay;
+    }
+    return widget.tokenArrivalDelay * tokens;
+  }
+
+  int _tokenCountForNode(MarkdownRenderNode node) {
+    final String text =
+        (node.content.isNotEmpty ? node.content : node.raw).trim();
+    if (text.isEmpty) {
+      return 1;
+    }
+    final int count = RegExp(r'\S+').allMatches(text).length;
+    return count <= 0 ? 1 : count;
+  }
+
+  void _enterWaiting() {
+    if (_isWaiting) {
+      return;
+    }
+    _isWaiting = true;
+    widget.onWait?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<MarkdownRenderNode> visibleBlocks = widget.blocks
+        .where(
+          (MarkdownRenderNode node) =>
+              _visibleIds.contains(widget.blockIdentityBuilder(node)),
+        )
+        .toList(growable: false);
+
+    if (widget.sliver) {
+      return SliverPadding(
+        padding: widget.padding,
+        sliver: SliverList(
+          delegate: SliverChildBuilderDelegate((BuildContext context, int i) {
+            if (i.isOdd) {
+              return SizedBox(height: widget.blockSpacing);
+            }
+            final MarkdownRenderNode node = visibleBlocks[i ~/ 2];
+            final String id = widget.blockIdentityBuilder(node);
+            return _RevealScheduleScope(
+              revealedAt: _revealedAt[id],
+              tokenArrivalDelay: widget.tokenArrivalDelay,
+              child: widget.blockBuilder(context, node),
+            );
+          },
+              childCount:
+                  visibleBlocks.isEmpty ? 0 : visibleBlocks.length * 2 - 1),
+        ),
+      );
+    }
+
+    final List<Widget> blockChildren = <Widget>[
+      for (int i = 0; i < visibleBlocks.length; i++) ...[
+        _RevealScheduleScope(
+          revealedAt:
+              _revealedAt[widget.blockIdentityBuilder(visibleBlocks[i])],
+          tokenArrivalDelay: widget.tokenArrivalDelay,
+          child: widget.blockBuilder(context, visibleBlocks[i]),
+        ),
+        if (i < visibleBlocks.length - 1) SizedBox(height: widget.blockSpacing),
+      ],
+    ];
+    return Padding(
+      padding: widget.padding,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: blockChildren,
+      ),
+    );
+  }
+}
+
 class _BlockRenderHost extends StatefulWidget {
   const _BlockRenderHost({
     super.key,
@@ -1595,6 +1829,27 @@ class _BlockRenderHost extends StatefulWidget {
 
   @override
   State<_BlockRenderHost> createState() => _BlockRenderHostState();
+}
+
+class _RevealScheduleScope extends InheritedWidget {
+  const _RevealScheduleScope({
+    required super.child,
+    required this.revealedAt,
+    required this.tokenArrivalDelay,
+  });
+
+  final DateTime? revealedAt;
+  final Duration tokenArrivalDelay;
+
+  static _RevealScheduleScope? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<_RevealScheduleScope>();
+  }
+
+  @override
+  bool updateShouldNotify(_RevealScheduleScope oldWidget) {
+    return oldWidget.revealedAt != revealedAt ||
+        oldWidget.tokenArrivalDelay != tokenArrivalDelay;
+  }
 }
 
 class _BlockRenderHostState extends State<_BlockRenderHost>
@@ -1632,12 +1887,16 @@ class _BlockRenderHostState extends State<_BlockRenderHost>
 
 class _FadeInTokenHost extends StatefulWidget {
   const _FadeInTokenHost({
+    this.initialDelay = Duration.zero,
+    this.scheduledStart,
     required this.duration,
     required this.curve,
     required this.child,
     super.key,
   });
 
+  final Duration initialDelay;
+  final DateTime? scheduledStart;
   final Duration duration;
   final Curve curve;
   final Widget child;
@@ -1647,22 +1906,77 @@ class _FadeInTokenHost extends StatefulWidget {
 }
 
 class _FadeInTokenHostState extends State<_FadeInTokenHost> {
-  bool _visible = false;
+  bool _revealed = false;
+  bool _animationCompleted = false;
+  Duration _animationDuration = Duration.zero;
+  double _beginOpacity = 0;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _visible = widget.duration <= Duration.zero;
-    if (_visible) {
+    _configureSchedule();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _configureSchedule() {
+    if (widget.duration <= Duration.zero) {
+      _revealed = true;
+      _animationCompleted = true;
+      _animationDuration = Duration.zero;
+      _beginOpacity = 1;
       return;
     }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _visible = true;
-      });
+
+    final DateTime now = DateTime.now();
+    final Duration sanitizedDelay = widget.initialDelay <= Duration.zero
+        ? Duration.zero
+        : widget.initialDelay;
+    final DateTime scheduledStart =
+        widget.scheduledStart ?? now.add(sanitizedDelay);
+    final DateTime scheduledEnd = scheduledStart.add(widget.duration);
+
+    if (now.isBefore(scheduledStart)) {
+      _revealed = false;
+      _animationCompleted = false;
+      _animationDuration = widget.duration;
+      _beginOpacity = 0;
+      _timer = Timer(scheduledStart.difference(now), _startAnimationNow);
+      return;
+    }
+
+    if (!now.isBefore(scheduledEnd)) {
+      _revealed = true;
+      _animationCompleted = true;
+      _animationDuration = Duration.zero;
+      _beginOpacity = 1;
+      return;
+    }
+
+    final Duration elapsed = now.difference(scheduledStart);
+    final int totalMicros = widget.duration.inMicroseconds;
+    final double progress =
+        totalMicros <= 0 ? 1 : elapsed.inMicroseconds / totalMicros;
+    _revealed = true;
+    _animationCompleted = false;
+    _animationDuration = scheduledEnd.difference(now);
+    _beginOpacity = progress.clamp(0, 1).toDouble();
+  }
+
+  void _startAnimationNow() {
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _revealed = true;
+      _animationCompleted = false;
+      _animationDuration = widget.duration;
+      _beginOpacity = 0;
     });
   }
 
@@ -1671,11 +1985,28 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
     if (widget.duration <= Duration.zero) {
       return widget.child;
     }
-    return AnimatedOpacity(
-      opacity: _visible ? 1 : 0,
-      duration: widget.duration,
+    if (!_revealed) {
+      return const Offstage(offstage: true);
+    }
+    if (_animationCompleted || _animationDuration <= Duration.zero) {
+      return widget.child;
+    }
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: _beginOpacity, end: 1),
+      duration: _animationDuration,
       curve: widget.curve,
       child: widget.child,
+      onEnd: () {
+        if (!mounted || _animationCompleted) {
+          return;
+        }
+        setState(() {
+          _animationCompleted = true;
+        });
+      },
+      builder: (BuildContext context, double opacity, Widget? child) {
+        return Opacity(opacity: opacity, child: child);
+      },
     );
   }
 }
