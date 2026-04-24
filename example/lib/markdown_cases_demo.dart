@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 import 'package:flutter/material.dart';
@@ -53,8 +55,9 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
   bool _workerStarted = false;
   bool _loading = true;
   bool _showSource = true;
-  bool _selectionEnabled = true;
+  bool _selectionEnabled = false;
   bool _debugTokens = false;
+  int _selectedTokenAnimation = 0;
   String? _error;
   int _streamedCharacters = 0;
   int _totalCharacters = 0;
@@ -192,7 +195,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
     if (_selectedCase < 0) {
       return _allCasesMarkdown;
     }
-    return _markdownCases[_selectedCase].markdown;
+    return _displayMarkdownCases[_selectedCase].markdown;
   }
 
   String get _visibleMarkdown {
@@ -210,7 +213,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
     if (_selectedCase < 0) {
       return 'All supported cases';
     }
-    return _markdownCases[_selectedCase].title;
+    return _displayMarkdownCases[_selectedCase].title;
   }
 
   void _selectCase(int index) {
@@ -238,6 +241,16 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
   void _toggleDebugTokens() {
     setState(() {
       _debugTokens = !_debugTokens;
+    });
+    unawaited(_renderActiveMarkdown());
+  }
+
+  void _selectTokenAnimation(int index) {
+    if (_selectedTokenAnimation == index) {
+      return;
+    }
+    setState(() {
+      _selectedTokenAnimation = index;
     });
     unawaited(_renderActiveMarkdown());
   }
@@ -284,6 +297,21 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
             ),
             onPressed: _toggleDebugTokens,
           ),
+          PopupMenuButton<int>(
+            tooltip: 'Token animation style',
+            icon: const Icon(Icons.auto_awesome_motion_outlined),
+            initialValue: _selectedTokenAnimation,
+            onSelected: _selectTokenAnimation,
+            itemBuilder: (BuildContext context) {
+              return <PopupMenuEntry<int>>[
+                for (int i = 0; i < _tokenAnimationPresets.length; i++)
+                  PopupMenuItem<int>(
+                    value: i,
+                    child: Text(_tokenAnimationPresets[i].name),
+                  ),
+              ];
+            },
+          ),
         ],
       ),
       body: SafeArea(
@@ -305,6 +333,10 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
               showSource: _showSource,
               enableSelection: _selectionEnabled,
               debugTokens: _debugTokens,
+              tokenAnimationBuilder:
+                  _tokenAnimationPresets[_selectedTokenAnimation].builder,
+              tokenAnimationName:
+                  _tokenAnimationPresets[_selectedTokenAnimation].name,
               onLinkTap: _showLinkSnackBar,
             );
 
@@ -351,7 +383,7 @@ class _CaseList extends StatelessWidget {
       color: colors.surface,
       child: ListView.builder(
         padding: const EdgeInsets.all(8),
-        itemCount: _markdownCases.length + 1,
+        itemCount: _displayMarkdownCases.length + 1,
         scrollDirection: MediaQuery.sizeOf(context).width >= 980
             ? Axis.vertical
             : Axis.horizontal,
@@ -363,10 +395,10 @@ class _CaseList extends StatelessWidget {
               : selectedIndex == caseIndex;
           final String title = allCases
               ? 'All cases'
-              : _markdownCases[caseIndex].title;
+              : _displayMarkdownCases[caseIndex].title;
           final String group = allCases
-              ? '${_markdownCases.length} sections'
-              : _markdownCases[caseIndex].group;
+              ? '${_regularMarkdownCases.length} sections'
+              : _displayMarkdownCases[caseIndex].group;
 
           return Padding(
             padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 4),
@@ -428,6 +460,8 @@ class _Workspace extends StatelessWidget {
     required this.showSource,
     required this.enableSelection,
     required this.debugTokens,
+    required this.tokenAnimationBuilder,
+    required this.tokenAnimationName,
     required this.onLinkTap,
   });
 
@@ -441,6 +475,8 @@ class _Workspace extends StatelessWidget {
   final bool showSource;
   final bool enableSelection;
   final bool debugTokens;
+  final StreamingMarkdownTokenAnimationBuilder tokenAnimationBuilder;
+  final String tokenAnimationName;
   final ValueChanged<String> onLinkTap;
 
   @override
@@ -455,6 +491,8 @@ class _Workspace extends StatelessWidget {
       totalCharacters: totalCharacters,
       enableSelection: enableSelection,
       debugTokens: debugTokens,
+      tokenAnimationBuilder: tokenAnimationBuilder,
+      tokenAnimationName: tokenAnimationName,
       onLinkTap: onLinkTap,
     );
 
@@ -493,6 +531,8 @@ class _PreviewPane extends StatefulWidget {
     required this.totalCharacters,
     required this.enableSelection,
     required this.debugTokens,
+    required this.tokenAnimationBuilder,
+    required this.tokenAnimationName,
     required this.onLinkTap,
   });
 
@@ -504,6 +544,8 @@ class _PreviewPane extends StatefulWidget {
   final int totalCharacters;
   final bool enableSelection;
   final bool debugTokens;
+  final StreamingMarkdownTokenAnimationBuilder tokenAnimationBuilder;
+  final String tokenAnimationName;
   final ValueChanged<String> onLinkTap;
 
   @override
@@ -551,6 +593,8 @@ class _PreviewPaneState extends State<_PreviewPane> {
 
   @override
   Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+    final ColorScheme colors = theme.colorScheme;
     return Column(
       children: [
         _ParserStatusBar(
@@ -559,6 +603,7 @@ class _PreviewPaneState extends State<_PreviewPane> {
           error: widget.error,
           streamedCharacters: widget.streamedCharacters,
           totalCharacters: widget.totalCharacters,
+          tokenAnimationName: widget.tokenAnimationName,
         ),
         Expanded(
           child: widget.error == null
@@ -566,35 +611,59 @@ class _PreviewPaneState extends State<_PreviewPane> {
                   controller: _previewScrollController,
                   automaticallyInheritForPlatforms: TargetPlatform.values
                       .toSet(),
-                  child: StreamingMarkdownRenderView(
-                    nodes: widget.nodes,
-                    emptyPlaceholder: '',
-                    padding: const EdgeInsets.all(20),
-                    enableTextSelection: widget.enableSelection,
-                    tokenArrivalDelay: const Duration(milliseconds: 35),
-                    tokenFadeInDuration: const Duration(milliseconds: 180),
-                    debugTokenHighlight: widget.debugTokens,
-                    allowUnclosedInlineDelimiters: true,
-                    onLinkTap: widget.onLinkTap,
-                    markdownTheme: const StreamingMarkdownThemeData(
-                      blockSpacing: 16,
-                      quoteBackgroundColor: Color(0x111F7A68),
-                      codeBlockBackgroundColor: Color(0xFF0F172A),
-                      codeBlockHeaderBackgroundColor: Color(0xFF1E293B),
-                      metadataBackgroundColor: Color(0xFFF8FAFC),
-                      metadataBorderColor: Color(0xFFCBD5E1),
-                      metadataTextStyle: TextStyle(
-                        color: Color(0xFF334155),
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                      ),
-                      tableBorderColor: Color(0xFFCBD5E1),
-                      tableHeaderBackgroundColor: Color(0xFFE2E8F0),
-                      thematicBreakColor: Color(0xFF94A3B8),
-                      imageErrorBackgroundColor: Color(0xFFE2E8F0),
-                      imageErrorTextStyle: TextStyle(color: Color(0xFF334155)),
-                      selectionColor: Color(0x5538BDF8),
-                    ),
+                  child: Builder(
+                    builder: (BuildContext context) {
+                      final Widget scrollContent = CustomScrollView(
+                        controller: _previewScrollController,
+                        slivers: <Widget>[
+                          StreamingMarkdownRenderView(
+                            nodes: widget.nodes,
+                            emptyPlaceholder: '',
+                            sliver: true,
+                            padding: const EdgeInsets.all(20),
+                            enableTextSelection: widget.enableSelection,
+                            tokenArrivalDelay: const Duration(
+                              milliseconds: 350,
+                            ),
+                            tokenFadeInDuration: const Duration(
+                              milliseconds: 1800,
+                            ),
+                            tokenAnimationBuilder: widget.tokenAnimationBuilder,
+                            debugTokenHighlight: widget.debugTokens,
+                            allowUnclosedInlineDelimiters: true,
+                            onLinkTap: widget.onLinkTap,
+                            markdownTheme: StreamingMarkdownThemeData(
+                              blockSpacing: 16,
+                              quoteBackgroundColor: Color(0x111F7A68),
+                              codeBlockBackgroundColor: Color(0xFF0F172A),
+                              codeBlockHeaderBackgroundColor: Color(0xFF1E293B),
+                              metadataBackgroundColor: Color(0xFFF8FAFC),
+                              metadataBorderColor: Color(0xFFCBD5E1),
+                              metadataTextStyle: TextStyle(
+                                color: Color(0xFF334155),
+                                fontFamily: 'monospace',
+                                fontSize: 12,
+                              ),
+                              tableBorderColor: colors.outlineVariant,
+                              tableHeaderBackgroundColor: Color.alphaBlend(
+                                colors.onSurface.withValues(alpha: 0.06),
+                                colors.surface,
+                              ),
+                              thematicBreakColor: Color(0xFF94A3B8),
+                              imageErrorBackgroundColor: Color(0xFFE2E8F0),
+                              imageErrorTextStyle: TextStyle(
+                                color: Color(0xFF334155),
+                              ),
+                              selectionColor: Color(0x5538BDF8),
+                            ),
+                          ),
+                        ],
+                      );
+                      if (!widget.enableSelection) {
+                        return scrollContent;
+                      }
+                      return SelectionArea(child: scrollContent);
+                    },
                   ),
                 )
               : Center(
@@ -616,6 +685,7 @@ class _ParserStatusBar extends StatelessWidget {
     required this.error,
     required this.streamedCharacters,
     required this.totalCharacters,
+    required this.tokenAnimationName,
   });
 
   final StreamingMarkdownParseResult? result;
@@ -623,6 +693,7 @@ class _ParserStatusBar extends StatelessWidget {
   final String? error;
   final int streamedCharacters;
   final int totalCharacters;
+  final String tokenAnimationName;
 
   @override
   Widget build(BuildContext context) {
@@ -672,6 +743,16 @@ class _ParserStatusBar extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            tokenAnimationName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: colors.primary,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -743,6 +824,142 @@ class _SourcePaneState extends State<_SourcePane> {
   }
 }
 
+class _TokenAnimationPreset {
+  const _TokenAnimationPreset({required this.name, required this.builder});
+
+  final String name;
+  final StreamingMarkdownTokenAnimationBuilder builder;
+}
+
+final List<_TokenAnimationPreset> _tokenAnimationPresets =
+    <_TokenAnimationPreset>[
+      _TokenAnimationPreset(
+        name: 'Fade (default)',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          return Opacity(opacity: token.value, child: token.child);
+        },
+      ),
+      _TokenAnimationPreset(
+        name: 'Slide up',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          final double t = Curves.easeOutCubic.transform(token.value);
+          return Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, (1 - t) * 10),
+              child: token.child,
+            ),
+          );
+        },
+      ),
+      _TokenAnimationPreset(
+        name: 'Slide right',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          final double t = Curves.easeOut.transform(token.value);
+          return Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset((1 - t) * -14, 0),
+              child: token.child,
+            ),
+          );
+        },
+      ),
+      _TokenAnimationPreset(
+        name: 'Scale pop',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          final double t = Curves.easeOutBack.transform(token.value);
+          return Transform.scale(
+            scale: 0.84 + (0.16 * t),
+            alignment: Alignment.bottomLeft,
+            child: Opacity(opacity: token.value, child: token.child),
+          );
+        },
+      ),
+      _TokenAnimationPreset(
+        name: 'Rotate in',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          final double t = Curves.easeOutQuart.transform(token.value);
+          return Transform.rotate(
+            angle: (1 - t) * -0.16,
+            alignment: Alignment.bottomLeft,
+            child: Opacity(opacity: token.value, child: token.child),
+          );
+        },
+      ),
+      _TokenAnimationPreset(
+        name: 'Blur to clear',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          final double t = Curves.easeOut.transform(token.value);
+          return ImageFiltered(
+            imageFilter: ImageFilter.blur(
+              sigmaX: (1 - t) * 2.6,
+              sigmaY: (1 - t) * 2.6,
+            ),
+            child: Opacity(opacity: t, child: token.child),
+          );
+        },
+      ),
+      _TokenAnimationPreset(
+        name: 'Wave wobble',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          final double t = token.value;
+          final double wave = math.sin(t * math.pi * 3) * (1 - t) * 7;
+          return Opacity(
+            opacity: Curves.easeOut.transform(t),
+            child: Transform.translate(
+              offset: Offset(0, -wave),
+              child: token.child,
+            ),
+          );
+        },
+      ),
+      _TokenAnimationPreset(
+        name: 'Flip Y',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          final double t = Curves.easeOutCubic.transform(token.value);
+          final Matrix4 matrix = Matrix4.identity()
+            ..setEntry(3, 2, 0.001)
+            ..rotateY((1 - t) * -1.1);
+          return Transform(
+            alignment: Alignment.centerLeft,
+            transform: matrix,
+            child: Opacity(opacity: t, child: token.child),
+          );
+        },
+      ),
+      _TokenAnimationPreset(
+        name: 'Elastic pop',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          final double t = Curves.elasticOut.transform(token.value);
+          return Transform.scale(
+            scale: 0.7 + (0.3 * t),
+            alignment: Alignment.bottomLeft,
+            child: Opacity(opacity: token.value, child: token.child),
+          );
+        },
+      ),
+      _TokenAnimationPreset(
+        name: 'Glitchy',
+        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+          final double t = token.value;
+          final double shakeX = math.sin(t * math.pi * 22) * (1 - t) * 4.0;
+          final double shakeY = math.cos(t * math.pi * 18) * (1 - t) * 2.0;
+          return Opacity(
+            opacity: Curves.easeOut.transform(t),
+            child: Transform.translate(
+              offset: Offset(shakeX, shakeY),
+              child: Transform.scale(
+                scale: 0.92 + (0.08 * Curves.easeOutBack.transform(t)),
+                alignment: Alignment.bottomLeft,
+                child: token.child,
+              ),
+            ),
+          );
+        },
+      ),
+    ];
+
 class _MarkdownCase {
   const _MarkdownCase({
     required this.title,
@@ -755,7 +972,7 @@ class _MarkdownCase {
   final String markdown;
 }
 
-final List<_MarkdownCase> _markdownCases = <_MarkdownCase>[
+final List<_MarkdownCase> _regularMarkdownCases = <_MarkdownCase>[
   const _MarkdownCase(
     title: 'Front matter and separators',
     group: 'Metadata',
@@ -986,16 +1203,82 @@ Multiple references can point at separate definitions.[^renderer]
   ),
 ];
 
+final _MarkdownCase _stressMarkdownCase = _MarkdownCase(
+  title: 'Stress test large markdown',
+  group: 'Stress',
+  markdown: _demoStressMarkdown,
+);
+
+final List<_MarkdownCase> _displayMarkdownCases = <_MarkdownCase>[
+  ..._regularMarkdownCases,
+  _stressMarkdownCase,
+];
+
+final String _demoStressMarkdown = _buildDemoStressMarkdown(
+  sections: 80,
+  paragraphRepeats: 3,
+  listItemsPerSection: 5,
+);
+
+String _buildDemoStressMarkdown({
+  required int sections,
+  required int paragraphRepeats,
+  required int listItemsPerSection,
+}) {
+  final StringBuffer out = StringBuffer()
+    ..writeln('# Stress Test (Large Markdown)')
+    ..writeln()
+    ..writeln(
+      'This case is intentionally heavy for render/parse benchmarking in the demo.',
+    )
+    ..writeln();
+
+  for (int i = 1; i <= sections; i++) {
+    out
+      ..writeln('## Section $i')
+      ..writeln();
+
+    for (int p = 0; p < paragraphRepeats; p++) {
+      out
+        ..writeln(
+          'Paragraph $p in section $i with **bold**, *italic*, '
+          '[link](https://example.com/$i/$p), and `inline_code`.',
+        )
+        ..writeln();
+    }
+
+    out
+      ..writeln('| Col A | Col B | Col C |')
+      ..writeln('| --- | --- | --- |')
+      ..writeln('| $i | ${i + 1} | ${i + 2} |')
+      ..writeln('| ${i + 3} | ${i + 4} | ${i + 5} |')
+      ..writeln();
+
+    for (int l = 1; l <= listItemsPerSection; l++) {
+      out.writeln('- [ ] task item $l in section $i');
+    }
+    out
+      ..writeln()
+      ..writeln('```dart')
+      ..writeln('final section = $i;')
+      ..writeln("print('stress section: \$section');")
+      ..writeln('```')
+      ..writeln();
+  }
+
+  return out.toString();
+}
+
 String get _allCasesMarkdown {
   final StringBuffer buffer = StringBuffer();
-  for (int i = 0; i < _markdownCases.length; i++) {
+  for (int i = 0; i < _regularMarkdownCases.length; i++) {
     if (i > 0) {
       buffer
         ..writeln()
         ..writeln('---')
         ..writeln();
     }
-    buffer.write(_markdownCases[i].markdown.trim());
+    buffer.write(_regularMarkdownCases[i].markdown.trim());
     buffer.writeln();
   }
   return buffer.toString();
