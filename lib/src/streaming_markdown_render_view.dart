@@ -16,6 +16,26 @@ typedef StreamingMarkdownBlockBuilder = Widget? Function(
   StreamingMarkdownBlockBuildContext block,
 );
 
+/// Snapshot passed into [StreamingMarkdownTokenAnimationBuilder].
+@immutable
+class StreamingMarkdownAnimatedToken {
+  const StreamingMarkdownAnimatedToken({
+    required this.child,
+    required this.animation,
+  });
+
+  final Widget child;
+  final Animation<double> animation;
+
+  double get value => animation.value;
+}
+
+/// Custom animation hook for each rendered token.
+typedef StreamingMarkdownTokenAnimationBuilder = Widget Function(
+  BuildContext context,
+  StreamingMarkdownAnimatedToken token,
+);
+
 /// Context object passed to [StreamingMarkdownBlockBuilder].
 class StreamingMarkdownBlockBuildContext {
   const StreamingMarkdownBlockBuildContext({
@@ -115,6 +135,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     this.tokenFadeInRelativeToDelay = 0,
     this.tokenFadeInDuration,
     this.tokenFadeInCurve = Curves.easeOut,
+    this.tokenAnimationBuilder,
     this.debugTokenHighlight = false,
     this.enableTextSelection = false,
     this.markdownTheme = const StreamingMarkdownThemeData(),
@@ -132,6 +153,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
   final double tokenFadeInRelativeToDelay;
   final Duration? tokenFadeInDuration;
   final Curve tokenFadeInCurve;
+  final StreamingMarkdownTokenAnimationBuilder? tokenAnimationBuilder;
   final bool debugTokenHighlight;
   final bool enableTextSelection;
   final StreamingMarkdownThemeData markdownTheme;
@@ -468,6 +490,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
       ..write(resolvedFade.inMicroseconds)
       ..write(':')
       ..write(tokenFadeInCurve)
+      ..write(':')
+      ..write(tokenAnimationBuilder.hashCode)
       ..write(':')
       ..write(allowUnclosedInlineDelimiters)
       ..write(':')
@@ -1272,6 +1296,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
           fadeCurve: tokenFadeInCurve,
           tokenStaggerDelay: resolvedTokenStep,
           tokenScheduleOrigin: tokenScheduleOrigin,
+          tokenAnimationBuilder: tokenAnimationBuilder,
           animatePerWord: animatePerWord,
           onTap: showSelectionOverlay
               ? null
@@ -1288,6 +1313,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
         fadeCurve: tokenFadeInCurve,
         tokenStaggerDelay: resolvedTokenStep,
         tokenScheduleOrigin: tokenScheduleOrigin,
+        tokenAnimationBuilder: tokenAnimationBuilder,
         animatePerWord: animatePerWord,
       );
     }
@@ -1307,6 +1333,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
                 duration: tokenFadeDuration,
                 curve: tokenFadeInCurve,
                 scheduledStart: tokenScheduleOrigin,
+                animationBuilder: tokenAnimationBuilder,
                 child: animatedRichText,
               )
             : animatedRichText;
@@ -1351,6 +1378,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     required Curve fadeCurve,
     required Duration tokenStaggerDelay,
     required DateTime? tokenScheduleOrigin,
+    required StreamingMarkdownTokenAnimationBuilder? tokenAnimationBuilder,
     required bool animatePerWord,
     VoidCallback? onTap,
   }) {
@@ -1407,6 +1435,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
             ),
             duration: fadeDuration,
             curve: fadeCurve,
+            animationBuilder: tokenAnimationBuilder,
             child: onTap == null
                 ? tokenWidget
                 : (debugTokenHighlight
@@ -1891,6 +1920,7 @@ class _FadeInTokenHost extends StatefulWidget {
     this.scheduledStart,
     required this.duration,
     required this.curve,
+    this.animationBuilder,
     required this.child,
     super.key,
   });
@@ -1899,6 +1929,7 @@ class _FadeInTokenHost extends StatefulWidget {
   final DateTime? scheduledStart;
   final Duration duration;
   final Curve curve;
+  final StreamingMarkdownTokenAnimationBuilder? animationBuilder;
   final Widget child;
 
   @override
@@ -2005,7 +2036,19 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
         });
       },
       builder: (BuildContext context, double opacity, Widget? child) {
-        return Opacity(opacity: opacity, child: child);
+        final StreamingMarkdownTokenAnimationBuilder? builder =
+            widget.animationBuilder;
+        final Widget resolvedChild = child ?? widget.child;
+        if (builder == null) {
+          return Opacity(opacity: opacity, child: resolvedChild);
+        }
+        return builder(
+          context,
+          StreamingMarkdownAnimatedToken(
+            child: resolvedChild,
+            animation: AlwaysStoppedAnimation<double>(opacity),
+          ),
+        );
       },
     );
   }
