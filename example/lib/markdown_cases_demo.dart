@@ -48,6 +48,8 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
   static const Duration _streamChunkDelay = Duration(milliseconds: 110);
 
   final StreamingMarkdownParseWorker _worker = StreamingMarkdownParseWorker();
+  final GlobalKey<_PreviewPaneState> _previewPaneKey =
+      GlobalKey<_PreviewPaneState>();
 
   List<MarkdownRenderNode> _nodes = const <MarkdownRenderNode>[];
   StreamingMarkdownParseResult? _result;
@@ -338,6 +340,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
               tokenAnimationName:
                   _tokenAnimationPresets[_selectedTokenAnimation].name,
               onLinkTap: _showLinkSnackBar,
+              previewPaneKey: _previewPaneKey,
             );
 
             if (wide) {
@@ -463,6 +466,7 @@ class _Workspace extends StatelessWidget {
     required this.tokenAnimationBuilder,
     required this.tokenAnimationName,
     required this.onLinkTap,
+    required this.previewPaneKey,
   });
 
   final List<MarkdownRenderNode> nodes;
@@ -478,11 +482,13 @@ class _Workspace extends StatelessWidget {
   final StreamingMarkdownTokenAnimationBuilder tokenAnimationBuilder;
   final String tokenAnimationName;
   final ValueChanged<String> onLinkTap;
+  final GlobalKey<_PreviewPaneState> previewPaneKey;
 
   @override
   Widget build(BuildContext context) {
     final bool split = showSource && MediaQuery.sizeOf(context).width >= 760;
     final Widget preview = _PreviewPane(
+      key: previewPaneKey,
       nodes: nodes,
       result: result,
       error: error,
@@ -523,6 +529,7 @@ class _Workspace extends StatelessWidget {
 
 class _PreviewPane extends StatefulWidget {
   const _PreviewPane({
+    super.key,
     required this.nodes,
     required this.result,
     required this.error,
@@ -554,6 +561,7 @@ class _PreviewPane extends StatefulWidget {
 
 class _PreviewPaneState extends State<_PreviewPane> {
   final ScrollController _previewScrollController = ScrollController();
+  final GlobalKey _scrollViewKey = GlobalKey();
 
   @override
   void initState() {
@@ -614,6 +622,7 @@ class _PreviewPaneState extends State<_PreviewPane> {
                   child: Builder(
                     builder: (BuildContext context) {
                       final Widget scrollContent = CustomScrollView(
+                        key: _scrollViewKey,
                         controller: _previewScrollController,
                         slivers: <Widget>[
                           StreamingMarkdownRenderView(
@@ -659,10 +668,11 @@ class _PreviewPaneState extends State<_PreviewPane> {
                           ),
                         ],
                       );
-                      if (!widget.enableSelection) {
-                        return scrollContent;
-                      }
-                      return SelectionArea(child: scrollContent);
+                      return SelectionArea(
+                        child: widget.enableSelection
+                            ? scrollContent
+                            : SelectionContainer.disabled(child: scrollContent),
+                      );
                     },
                   ),
                 )
