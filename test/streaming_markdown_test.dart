@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
@@ -121,7 +122,18 @@ void main() {
       ),
     );
 
-    await tester.tapAt(tester.getCenter(find.text('OpenAI')));
+    final Iterable<RichText> candidates = tester
+        .widgetList<RichText>(find.byType(RichText))
+        .where(
+            (RichText widget) => widget.text.toPlainText().contains('OpenAI'));
+    TapGestureRecognizer? recognizer;
+    for (final RichText widget in candidates) {
+      recognizer = _findRecognizerForText(widget.text, 'OpenAI');
+      if (recognizer != null) {
+        break;
+      }
+    }
+    recognizer?.onTap?.call();
 
     expect(tappedUrl, 'https://openai.com');
   });
@@ -261,4 +273,22 @@ MarkdownRenderNode _renderNode(
     raw: raw,
     content: raw,
   );
+}
+
+TapGestureRecognizer? _findRecognizerForText(InlineSpan span, String target) {
+  if (span is TextSpan) {
+    if (span.text == target && span.recognizer is TapGestureRecognizer) {
+      return span.recognizer! as TapGestureRecognizer;
+    }
+    for (final InlineSpan child in span.children ?? const <InlineSpan>[]) {
+      final TapGestureRecognizer? recognizer = _findRecognizerForText(
+        child,
+        target,
+      );
+      if (recognizer != null) {
+        return recognizer;
+      }
+    }
+  }
+  return null;
 }

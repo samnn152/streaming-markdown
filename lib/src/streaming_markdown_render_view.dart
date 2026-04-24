@@ -1174,7 +1174,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
         Theme.of(context).textTheme.bodyLarge ??
         const TextStyle(fontSize: 16);
     final bool showSelectionOverlay = enableTextSelection;
-    final bool animatePerWord = !showSelectionOverlay;
+    final bool animatePerWord = true;
     final List<_InlineToken> tokens = _parseInlineTokens(
       normalized,
       references: linkReferences,
@@ -1324,19 +1324,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       textScaler: MediaQuery.textScalerOf(context),
       text: TextSpan(style: resolvedStyle, children: spans),
     );
-    final Widget visibleAnimatedLayer =
-        showSelectionOverlay && tokenFadeDuration > Duration.zero
-            ? _FadeInTokenHost(
-                key: ValueKey<String>(
-                  'sel_inline_${normalized.hashCode}_${resolvedStyle.hashCode}',
-                ),
-                duration: tokenFadeDuration,
-                curve: tokenFadeInCurve,
-                scheduledStart: tokenScheduleOrigin,
-                animationBuilder: tokenAnimationBuilder,
-                child: animatedRichText,
-              )
-            : animatedRichText;
+    final Widget visibleAnimatedLayer = animatedRichText;
     if (!showSelectionOverlay) {
       return visibleAnimatedLayer;
     }
@@ -1388,7 +1376,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     }
 
     int tokenIndex = startTokenIndex;
-    for (final RegExpMatch match in RegExp(r'\S+\s*|\s+').allMatches(text)) {
+    for (final RegExpMatch match in RegExp(r'\S+|\s+').allMatches(text)) {
       final String piece = match.group(0) ?? '';
       if (piece.isEmpty) {
         continue;
@@ -1609,11 +1597,12 @@ class _SelectableInlineTextOverlayState
 }
 
 TextStyle _selectionOverlayStyle(TextStyle style) {
+  final Paint transparentPaint = Paint()..color = Colors.transparent;
   return style.copyWith(
-    color: Colors.transparent,
-    backgroundColor: Colors.transparent,
     decorationColor: Colors.transparent,
     shadows: const <Shadow>[],
+    foreground: transparentPaint,
+    background: transparentPaint,
   );
 }
 
