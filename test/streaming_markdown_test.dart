@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 
@@ -152,6 +153,155 @@ void main() {
     );
 
     expect(find.byType(SelectionArea), findsNothing);
+  });
+
+  testWidgets('copy selection returns markdown source', (
+    WidgetTester tester,
+  ) async {
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        switch (methodCall.method) {
+          case 'Clipboard.setData':
+            final Map<dynamic, dynamic> data =
+                methodCall.arguments! as Map<dynamic, dynamic>;
+            clipboardText = data['text'] as String?;
+            return null;
+          case 'Clipboard.getData':
+            return <String, dynamic>{'text': clipboardText};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('Inline [OpenAI](https://openai.com) link.'),
+            ],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+
+    final SelectableRegionState regionState =
+        tester.state<SelectableRegionState>(find.byType(SelectableRegion));
+    regionState.selectAll(SelectionChangedCause.keyboard);
+    await tester.pump();
+
+    final BuildContext context = tester.element(
+      find
+          .byWidgetPredicate(
+            (Widget widget) =>
+                widget is RichText &&
+                widget.text.toPlainText().contains('Inline OpenAI link.'),
+          )
+          .first,
+    );
+    Actions.invoke(context, CopySelectionTextIntent.copy);
+    await tester.pump();
+
+    expect(clipboardText, 'Inline [OpenAI](https://openai.com) link.');
+  });
+
+  testWidgets('copy selection preserves block markdown delimiters', (
+    WidgetTester tester,
+  ) async {
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        switch (methodCall.method) {
+          case 'Clipboard.setData':
+            final Map<dynamic, dynamic> data =
+                methodCall.arguments! as Map<dynamic, dynamic>;
+            clipboardText = data['text'] as String?;
+            return null;
+          case 'Clipboard.getData':
+            return <String, dynamic>{'text': clipboardText};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '# Front matter',
+                type: 'atx_heading',
+                content: 'Front matter',
+                startByte: 0,
+              ),
+              _renderNode(
+                'Front matter is rendered as a metadata block when it appears '
+                'at the top of the document.',
+                startByte: 16,
+              ),
+              _renderNode(
+                '---',
+                type: 'thematic_break',
+                content: '',
+                startByte: 106,
+              ),
+              _renderNode(
+                'Thematic breaks render as horizontal dividers.',
+                startByte: 111,
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+
+    final SelectableRegionState regionState =
+        tester.state<SelectableRegionState>(find.byType(SelectableRegion));
+    regionState.selectAll(SelectionChangedCause.keyboard);
+    await tester.pump();
+
+    final BuildContext context = tester.element(
+      find
+          .byWidgetPredicate(
+            (Widget widget) =>
+                widget is RichText &&
+                widget.text.toPlainText().contains('Front matter'),
+          )
+          .first,
+    );
+    Actions.invoke(context, CopySelectionTextIntent.copy);
+    await tester.pump();
+
+    expect(
+      clipboardText,
+      '# Front matter\n\n'
+      'Front matter is rendered as a metadata block when it appears '
+      'at the top of the document.\n\n'
+      '---\n\n'
+      'Thematic breaks render as horizontal dividers.',
+    );
   });
 
   testWidgets(
@@ -708,6 +858,7 @@ Set<String> _collectTypes(MarkdownSyntaxNode node) {
 MarkdownRenderNode _renderNode(
   String raw, {
   String type = 'paragraph',
+  String? content,
   int startByte = 0,
   int startRow = 0,
   int? endRow,
@@ -720,7 +871,7 @@ MarkdownRenderNode _renderNode(
     startRow: startRow,
     endRow: endRow ?? startRow,
     raw: raw,
-    content: raw,
+    content: content ?? raw,
   );
 }
 

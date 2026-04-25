@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter/services.dart';
 import 'package:html/dom.dart' as html_dom;
 import 'package:html/parser.dart' as html_parser;
@@ -224,7 +225,14 @@ class StreamingMarkdownRenderView extends StatelessWidget
     if (!enableTextSelection || sliver) {
       return content;
     }
-    return SelectionArea(child: content);
+    return _MarkdownSelectionArea(
+      projection: _buildSelectionProjection(
+        blocks,
+        linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
+      ),
+      child: content,
+    );
   }
 
   List<MarkdownRenderNode> _collectRenderableBlocks(
@@ -532,6 +540,127 @@ class StreamingMarkdownRenderView extends StatelessWidget
       ..write(':')
       ..write(Theme.of(context).hashCode);
     return buffer.toString().hashCode.toString();
+  }
+
+  _MarkdownSelectionProjection _buildSelectionProjection(
+    List<MarkdownRenderNode> blocks, {
+    required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
+  }) {
+    final List<_MarkdownSelectionSegment> segments =
+        <_MarkdownSelectionSegment>[];
+    for (final MarkdownRenderNode block in blocks) {
+      final String raw = _normalizedRaw(block.raw);
+      switch (block.type) {
+        case 'atx_heading':
+        case 'setext_heading':
+          segments.add(
+            _MarkdownSelectionSegment.plain(
+              plainText: _headingText(block),
+              markdownText: raw,
+              preserveBlockMarkdownOnPartial: true,
+            ),
+          );
+          break;
+        case 'paragraph':
+          segments.add(
+            _inlineSelectionSegment(
+              _paragraphText(block).replaceAll('\n', ' '),
+              markdownText: raw,
+              linkReferences: linkReferences,
+              footnoteNumbers: footnoteNumbers,
+            ),
+          );
+          break;
+        case 'footnote_definition':
+        case 'link_reference_definition':
+          final List<_FootnoteDefinition> definitions =
+              _parseFootnoteDefinitions(raw);
+          segments.add(
+            _MarkdownSelectionSegment.plain(
+              plainText: definitions.isEmpty
+                  ? raw
+                  : definitions
+                      .map(
+                        (_FootnoteDefinition definition) =>
+                            '${definition.id}: ${definition.body}',
+                      )
+                      .join('\n'),
+              markdownText: raw,
+              preserveBlockMarkdownOnPartial: true,
+            ),
+          );
+          break;
+        case 'thematic_break':
+        case 'pipe_table_delimiter_row':
+          segments.add(
+            _MarkdownSelectionSegment.plain(
+              plainText: '',
+              markdownText: raw,
+              preserveBlockMarkdownOnPartial: true,
+            ),
+          );
+          break;
+        default:
+          segments.add(
+            _MarkdownSelectionSegment.plain(
+              plainText: _contentOrRaw(block),
+              markdownText: raw,
+            ),
+          );
+          break;
+      }
+    }
+    return _MarkdownSelectionProjection(segments);
+  }
+
+  _MarkdownSelectionSegment _inlineSelectionSegment(
+    String text, {
+    required String markdownText,
+    required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
+  }) {
+    final List<_InlineToken> tokens = _parseInlineTokens(
+      text.replaceAll('\r', ''),
+      references: linkReferences,
+      allowUnclosedDelimiters: allowUnclosedInlineDelimiters,
+    );
+    final List<_MarkdownSelectionPiece> pieces = <_MarkdownSelectionPiece>[];
+    for (final _InlineToken token in tokens) {
+      if (token.isImage) {
+        pieces.add(
+          _MarkdownSelectionPiece(
+            plainText:
+                token.altText.isEmpty ? '[image]' : '[image: ${token.altText}]',
+            markdownText: token.sourceMarkdown,
+          ),
+        );
+        continue;
+      }
+      if (token.isFootnoteReference) {
+        final int? number = _footnoteNumberForId(
+          footnoteNumbers,
+          token.footnoteReferenceId!,
+        );
+        pieces.add(
+          _MarkdownSelectionPiece(
+            plainText: number?.toString() ?? token.footnoteReferenceId!,
+            markdownText: token.sourceMarkdown,
+          ),
+        );
+        continue;
+      }
+      pieces.add(
+        _MarkdownSelectionPiece(
+          plainText: token.text,
+          markdownText: token.sourceMarkdown,
+        ),
+      );
+    }
+    return _MarkdownSelectionSegment(
+      pieces: pieces,
+      fallbackMarkdownText: markdownText,
+    );
   }
 
   String _linkReferencesDigest(Map<String, String> linkReferences) {
@@ -1716,7 +1845,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
             onLinkTap: (String url) => _onLinkPressed(context, url),
           ),
         ),
-        IgnorePointer(child: visibleAnimatedLayer),
+        SelectionContainer.disabled(
+          child: IgnorePointer(child: visibleAnimatedLayer),
+        ),
       ],
     );
   }
@@ -1895,6 +2026,311 @@ class StreamingMarkdownRenderView extends StatelessWidget
       context,
     ).showSnackBar(SnackBar(content: Text('Copied link: $url')));
   }
+}
+
+class _MarkdownSelectionArea extends StatefulWidget {
+  const _MarkdownSelectionArea({
+    required this.projection,
+    required this.child,
+  });
+
+  final _MarkdownSelectionProjection projection;
+  final Widget child;
+
+  @override
+  State<_MarkdownSelectionArea> createState() => _MarkdownSelectionAreaState();
+}
+
+class _MarkdownSelectionAreaState extends State<_MarkdownSelectionArea> {
+  SelectedContent? _selectedContent;
+
+  @override
+  Widget build(BuildContext context) {
+    return SelectionArea(
+      contextMenuBuilder: (
+        BuildContext context,
+        SelectableRegionState selectableRegionState,
+      ) {
+        return AdaptiveTextSelectionToolbar.buttonItems(
+          anchors: selectableRegionState.contextMenuAnchors,
+          buttonItems: selectableRegionState.contextMenuButtonItems
+              .map((ContextMenuButtonItem item) {
+            if (item.type != ContextMenuButtonType.copy) {
+              return item;
+            }
+            return ContextMenuButtonItem(
+              type: item.type,
+              label: item.label,
+              onPressed: () {
+                _copyMarkdownSelection();
+                selectableRegionState.hideToolbar();
+              },
+            );
+          }).toList(growable: false),
+        );
+      },
+      onSelectionChanged: (SelectedContent? content) {
+        _selectedContent = content;
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          CopySelectionTextIntent: CallbackAction<CopySelectionTextIntent>(
+            onInvoke: (CopySelectionTextIntent intent) {
+              _copyMarkdownSelection();
+              return null;
+            },
+          ),
+        },
+        child: widget.child,
+      ),
+    );
+  }
+
+  void _copyMarkdownSelection() {
+    final String plainText = _selectedContent?.plainText ?? '';
+    final String markdownText =
+        widget.projection.markdownForSelectedPlainText(plainText);
+    if (markdownText.isNotEmpty) {
+      Clipboard.setData(ClipboardData(text: markdownText));
+    }
+  }
+}
+
+class _MarkdownSelectionProjection {
+  const _MarkdownSelectionProjection(this.segments);
+
+  final List<_MarkdownSelectionSegment> segments;
+
+  String markdownForSelectedPlainText(String selectedPlainText) {
+    final String selected = selectedPlainText.replaceAll('\r', '');
+    if (selected.isEmpty) {
+      return '';
+    }
+
+    for (final _MarkdownSelectionSegment segment in segments) {
+      final String exact = segment.markdownForPlainText(selected);
+      if (exact.isNotEmpty) {
+        return exact;
+      }
+    }
+
+    final String withDisplaySeparators = _markdownForDocumentSelection(
+      selected,
+      plainSeparator: '\n\n',
+    );
+    if (withDisplaySeparators.isNotEmpty) {
+      return withDisplaySeparators;
+    }
+
+    final String compact = _markdownForDocumentSelection(
+      selected,
+      plainSeparator: '',
+    );
+    if (compact.isNotEmpty) {
+      return compact;
+    }
+
+    final String containedSegments = _markdownForContainedSegments(selected);
+    if (containedSegments.isNotEmpty) {
+      return containedSegments;
+    }
+
+    return selected;
+  }
+
+  String _markdownForContainedSegments(String selectedPlainText) {
+    final List<int> selectedIndexes = <int>[];
+    for (int i = 0; i < segments.length; i++) {
+      final String plainText = segments[i].plainText;
+      if (plainText.isNotEmpty && selectedPlainText.contains(plainText)) {
+        selectedIndexes.add(i);
+      }
+    }
+    if (selectedIndexes.length <= 1) {
+      return '';
+    }
+
+    final int first = selectedIndexes.first;
+    final int last = selectedIndexes.last;
+    final StringBuffer out = StringBuffer();
+    for (int i = first; i <= last; i++) {
+      final _MarkdownSelectionSegment segment = segments[i];
+      if (segment.plainText.isEmpty && segment.markdownText.isEmpty) {
+        continue;
+      }
+      if (segment.plainText.isNotEmpty &&
+          !selectedPlainText.contains(segment.plainText)) {
+        continue;
+      }
+      if (out.isNotEmpty) {
+        out.write('\n\n');
+      }
+      out.write(segment.markdownText);
+    }
+    return out.toString();
+  }
+
+  String _markdownForDocumentSelection(
+    String selectedPlainText, {
+    required String plainSeparator,
+  }) {
+    final StringBuffer plain = StringBuffer();
+    final List<_MarkdownSelectionSegmentRange> ranges =
+        <_MarkdownSelectionSegmentRange>[];
+    for (int i = 0; i < segments.length; i++) {
+      if (i > 0) {
+        plain.write(plainSeparator);
+      }
+      final int start = plain.length;
+      plain.write(segments[i].plainText);
+      ranges.add(
+        _MarkdownSelectionSegmentRange(
+          segment: segments[i],
+          start: start,
+          end: plain.length,
+        ),
+      );
+    }
+
+    final String plainText = plain.toString();
+    final int selectionStart = plainText.indexOf(selectedPlainText);
+    if (selectionStart < 0) {
+      return '';
+    }
+    final int selectionEnd = selectionStart + selectedPlainText.length;
+    final StringBuffer out = StringBuffer();
+
+    for (final _MarkdownSelectionSegmentRange range in ranges) {
+      final _MarkdownSelectionSegment segment = range.segment;
+      final bool isEmptySegment = range.start == range.end;
+      final bool intersects = isEmptySegment
+          ? selectionStart < range.start && selectionEnd > range.start
+          : selectionStart < range.end && selectionEnd > range.start;
+      if (!intersects) {
+        continue;
+      }
+
+      final String markdownText = isEmptySegment
+          ? segment.markdownText
+          : segment.markdownForPlainRange(
+              (selectionStart - range.start).clamp(0, segment.plainText.length),
+              (selectionEnd - range.start).clamp(0, segment.plainText.length),
+            );
+      if (markdownText.isEmpty) {
+        continue;
+      }
+      if (out.isNotEmpty) {
+        out.write('\n\n');
+      }
+      out.write(markdownText);
+    }
+
+    return out.toString();
+  }
+}
+
+class _MarkdownSelectionSegmentRange {
+  const _MarkdownSelectionSegmentRange({
+    required this.segment,
+    required this.start,
+    required this.end,
+  });
+
+  final _MarkdownSelectionSegment segment;
+  final int start;
+  final int end;
+}
+
+class _MarkdownSelectionSegment {
+  const _MarkdownSelectionSegment({
+    required this.pieces,
+    required this.fallbackMarkdownText,
+    this.preserveBlockMarkdownOnPartial = false,
+  });
+
+  factory _MarkdownSelectionSegment.plain({
+    required String plainText,
+    required String markdownText,
+    bool preserveBlockMarkdownOnPartial = false,
+  }) {
+    return _MarkdownSelectionSegment(
+      pieces: <_MarkdownSelectionPiece>[
+        _MarkdownSelectionPiece(
+            plainText: plainText, markdownText: markdownText),
+      ],
+      fallbackMarkdownText: markdownText,
+      preserveBlockMarkdownOnPartial: preserveBlockMarkdownOnPartial,
+    );
+  }
+
+  final List<_MarkdownSelectionPiece> pieces;
+  final String fallbackMarkdownText;
+  final bool preserveBlockMarkdownOnPartial;
+
+  String get plainText {
+    final StringBuffer buffer = StringBuffer();
+    for (final _MarkdownSelectionPiece piece in pieces) {
+      buffer.write(piece.plainText);
+    }
+    return buffer.toString();
+  }
+
+  String get markdownText => fallbackMarkdownText;
+
+  String markdownForPlainText(String selectedPlainText) {
+    if (selectedPlainText == plainText) {
+      return fallbackMarkdownText;
+    }
+    final int selectionStart = plainText.indexOf(selectedPlainText);
+    if (selectionStart < 0) {
+      return '';
+    }
+    return markdownForPlainRange(
+      selectionStart,
+      selectionStart + selectedPlainText.length,
+    );
+  }
+
+  String markdownForPlainRange(int selectionStart, int selectionEnd) {
+    if (selectionStart <= 0 && selectionEnd >= plainText.length) {
+      return fallbackMarkdownText;
+    }
+
+    int cursor = 0;
+    final StringBuffer out = StringBuffer();
+    bool hasMatch = false;
+    for (final _MarkdownSelectionPiece piece in pieces) {
+      final int start = cursor;
+      final int end = start + piece.plainText.length;
+      cursor = end;
+
+      if (selectionEnd <= start || selectionStart >= end) {
+        continue;
+      }
+      if (selectionStart <= start && selectionEnd >= end) {
+        out.write(piece.markdownText);
+        hasMatch = true;
+      } else {
+        final int localStart =
+            (selectionStart - start).clamp(0, piece.plainText.length);
+        final int localEnd =
+            (selectionEnd - start).clamp(0, piece.plainText.length);
+        out.write(piece.plainText.substring(localStart, localEnd));
+        hasMatch = true;
+      }
+    }
+    return hasMatch ? out.toString() : '';
+  }
+}
+
+class _MarkdownSelectionPiece {
+  const _MarkdownSelectionPiece({
+    required this.plainText,
+    required this.markdownText,
+  });
+
+  final String plainText;
+  final String markdownText;
 }
 
 class _SelectableInlineTextOverlay extends StatefulWidget {

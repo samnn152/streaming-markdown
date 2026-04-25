@@ -398,7 +398,9 @@ mixin _StreamingMarkdownTextParsing {
       return <_InlineToken>[];
     }
     if (depth > 8) {
-      return <_InlineToken>[_InlineToken.text(text: text, style: style)];
+      return <_InlineToken>[
+        _InlineToken.text(text: text, style: style, sourceMarkdown: text),
+      ];
     }
 
     final List<_InlineToken> tokens = <_InlineToken>[];
@@ -408,7 +410,9 @@ mixin _StreamingMarkdownTextParsing {
       if (plain.isEmpty) {
         return;
       }
-      tokens.add(_InlineToken.text(text: plain.toString(), style: style));
+      final String value = plain.toString();
+      tokens.add(
+          _InlineToken.text(text: value, style: style, sourceMarkdown: value));
       plain.clear();
     }
 
@@ -419,7 +423,11 @@ mixin _StreamingMarkdownTextParsing {
         if (image != null) {
           flushPlain();
           tokens.add(
-            _InlineToken.image(altText: image.alt, imageUrl: image.url),
+            _InlineToken.image(
+              altText: image.alt,
+              imageUrl: image.url,
+              sourceMarkdown: text.substring(i, image.end),
+            ),
           );
           i = image.end;
           continue;
@@ -434,7 +442,10 @@ mixin _StreamingMarkdownTextParsing {
         if (footnoteRef != null) {
           flushPlain();
           tokens.add(
-            _InlineToken.footnote(footnoteReferenceId: footnoteRef.id),
+            _InlineToken.footnote(
+              footnoteReferenceId: footnoteRef.id,
+              sourceMarkdown: text.substring(i, footnoteRef.end),
+            ),
           );
           i = footnoteRef.end;
           continue;
@@ -460,6 +471,7 @@ mixin _StreamingMarkdownTextParsing {
                 text: link.label,
                 style: style,
                 linkUrl: link.url,
+                sourceMarkdown: text.substring(i, link.end),
               ),
             );
           } else {
@@ -467,7 +479,10 @@ mixin _StreamingMarkdownTextParsing {
               if (token.isImage) {
                 tokens.add(token);
               } else {
-                tokens.add(token.withLink(link.url));
+                tokens.add(
+                  token.withLink(link.url,
+                      sourceMarkdown: text.substring(i, link.end)),
+                );
               }
             }
           }
@@ -481,7 +496,14 @@ mixin _StreamingMarkdownTextParsing {
         if (end != -1) {
           flushPlain();
           final String url = text.substring(i + 1, end);
-          tokens.add(_InlineToken.text(text: url, style: style, linkUrl: url));
+          tokens.add(
+            _InlineToken.text(
+              text: url,
+              style: style,
+              linkUrl: url,
+              sourceMarkdown: text.substring(i, end + 1),
+            ),
+          );
           i = end + 1;
           continue;
         }
@@ -494,6 +516,7 @@ mixin _StreamingMarkdownTextParsing {
           _InlineToken.text(
             text: code.inner,
             style: style.copyWith(code: true),
+            sourceMarkdown: text.substring(i, code.end),
           ),
         );
         i = code.end;
@@ -1020,19 +1043,25 @@ class _InlineToken {
   const _InlineToken.text({
     required this.text,
     required this.style,
+    required this.sourceMarkdown,
     this.linkUrl,
   })  : altText = '',
         imageUrl = null,
         footnoteReferenceId = null;
 
-  const _InlineToken.image({required this.altText, required this.imageUrl})
-      : text = '',
+  const _InlineToken.image({
+    required this.altText,
+    required this.imageUrl,
+    required this.sourceMarkdown,
+  })  : text = '',
         style = const _InlineStyle(),
         linkUrl = null,
         footnoteReferenceId = null;
 
-  const _InlineToken.footnote({required this.footnoteReferenceId})
-      : text = '',
+  const _InlineToken.footnote({
+    required this.footnoteReferenceId,
+    required this.sourceMarkdown,
+  })  : text = '',
         style = const _InlineStyle(),
         linkUrl = null,
         altText = '',
@@ -1044,14 +1073,20 @@ class _InlineToken {
   final String altText;
   final String? imageUrl;
   final String? footnoteReferenceId;
+  final String sourceMarkdown;
 
   bool get isImage => imageUrl != null;
   bool get isFootnoteReference => footnoteReferenceId != null;
 
-  _InlineToken withLink(String url) {
+  _InlineToken withLink(String url, {required String sourceMarkdown}) {
     if (isImage || isFootnoteReference) {
       return this;
     }
-    return _InlineToken.text(text: text, style: style, linkUrl: url);
+    return _InlineToken.text(
+      text: text,
+      style: style,
+      linkUrl: url,
+      sourceMarkdown: sourceMarkdown,
+    );
   }
 }
