@@ -638,16 +638,15 @@ class _PreviewPaneState extends State<_PreviewPane> {
                                     alignment: Alignment.bottomLeft,
                                     child: SizedBox(
                                       width: double.infinity,
-                                      child: StreamingMarkdownRenderView(
-                                        nodes: widget.nodes,
-                                        emptyPlaceholder: '',
-                                        sliver: false,
-                                        padding: const EdgeInsets.all(20),
-                                        // Keep renderer config stable across selection toggles.
-                                        enableTextSelection: true,
-                                        tokenArrivalDelay: const Duration(
-                                          milliseconds: 350,
-                                        ),
+                                  child: StreamingMarkdownRenderView(
+                                    nodes: widget.nodes,
+                                    emptyPlaceholder: '',
+                                    sliver: false,
+                                    padding: const EdgeInsets.all(20),
+                                    enableTextSelection: widget.enableSelection,
+                                    tokenArrivalDelay: const Duration(
+                                      milliseconds: 350,
+                                    ),
                                         tokenFadeInDuration: const Duration(
                                           milliseconds: 1800,
                                         ),
@@ -705,11 +704,7 @@ class _PreviewPaneState extends State<_PreviewPane> {
                               );
                             },
                       );
-                      return SelectionArea(
-                        child: widget.enableSelection
-                            ? scrollContent
-                            : SelectionContainer.disabled(child: scrollContent),
-                      );
+                      return scrollContent;
                     },
                   ),
                 )

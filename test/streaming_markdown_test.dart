@@ -108,9 +108,7 @@ void main() {
         home: Scaffold(
           body: StreamingMarkdownRenderView(
             nodes: <MarkdownRenderNode>[
-              _renderNode(
-                'Tap [OpenAI](https://openai.com) for details.',
-              ),
+              _renderNode('Tap [OpenAI](https://openai.com) for details.'),
             ],
             padding: EdgeInsets.zero,
             enableTextSelection: true,
@@ -122,10 +120,10 @@ void main() {
       ),
     );
 
-    final Iterable<RichText> candidates = tester
-        .widgetList<RichText>(find.byType(RichText))
-        .where(
-            (RichText widget) => widget.text.toPlainText().contains('OpenAI'));
+    final Iterable<RichText> candidates =
+        tester.widgetList<RichText>(find.byType(RichText)).where(
+              (RichText widget) => widget.text.toPlainText().contains('OpenAI'),
+            );
     TapGestureRecognizer? recognizer;
     for (final RichText widget in candidates) {
       recognizer = _findRecognizerForText(widget.text, 'OpenAI');
@@ -138,23 +136,136 @@ void main() {
     expect(tappedUrl, 'https://openai.com');
   });
 
-  testWidgets('html tables use intrinsic columns', (
+  testWidgets('selection container is absent when text selection is disabled', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[_renderNode('Plain paragraph text')],
+            padding: EdgeInsets.zero,
+            enableTextSelection: false,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(SelectionArea), findsNothing);
+  });
+
+  testWidgets(
+    'resize and selection toggle do not restart fade (sliver=false)',
+    (WidgetTester tester) async {
+      bool selectionEnabled = false;
+      Size viewportSize = const Size(1200, 800);
+      late StateSetter updateHost;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (BuildContext context, StateSetter setState) {
+              updateHost = setState;
+              return MediaQuery(
+                data: MediaQueryData(size: viewportSize),
+                child: Scaffold(
+                  body: StreamingMarkdownRenderView(
+                    nodes: <MarkdownRenderNode>[
+                      _renderNode('Token fade should continue'),
+                    ],
+                    padding: EdgeInsets.zero,
+                    enableTextSelection: selectionEnabled,
+                    tokenFadeInDuration: const Duration(seconds: 2),
+                    tokenFadeInCurve: Curves.linear,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      await tester.pump(const Duration(milliseconds: 700));
+      final double beforeResize = _activeTokenOpacity(tester);
+
+      updateHost(() {
+        viewportSize = const Size(920, 800);
+      });
+      await tester.pump();
+      final double afterResize = _activeTokenOpacity(tester);
+
+      updateHost(() {
+        selectionEnabled = true;
+      });
+      await tester.pump();
+      final double afterSelectionToggle = _activeTokenOpacity(tester);
+
+      expect(afterResize, greaterThan(beforeResize - 0.2));
+      expect(afterSelectionToggle, greaterThan(beforeResize - 0.2));
+    },
+  );
+
+  testWidgets('resize does not restart fade (sliver=true)', (
+    WidgetTester tester,
+  ) async {
+    Size viewportSize = const Size(1200, 800);
+    late StateSetter updateHost;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            updateHost = setState;
+            return MediaQuery(
+              data: MediaQueryData(size: viewportSize),
+              child: Scaffold(
+                body: SelectionArea(
+                  child: CustomScrollView(
+                    slivers: <Widget>[
+                      StreamingMarkdownRenderView(
+                        nodes: <MarkdownRenderNode>[
+                          _renderNode('Token fade should continue'),
+                        ],
+                        sliver: true,
+                        padding: EdgeInsets.zero,
+                        enableTextSelection: true,
+                        tokenFadeInDuration: const Duration(seconds: 2),
+                        tokenFadeInCurve: Curves.linear,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 700));
+    final double beforeResize = _activeTokenOpacity(tester);
+
+    updateHost(() {
+      viewportSize = const Size(920, 800);
+    });
+    await tester.pump();
+    final double afterResize = _activeTokenOpacity(tester);
+
+    expect(afterResize, greaterThan(beforeResize - 0.2));
+  });
+
+  testWidgets('html tables use intrinsic columns', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
             nodes: <MarkdownRenderNode>[
-              _renderNode(
-                '''
+              _renderNode('''
 <table>
   <tr><th>Column</th><th>Value</th></tr>
   <tr><td>HTML table</td><td>Rendered</td></tr>
 </table>
-''',
-                type: 'html_block',
-              ),
+''', type: 'html_block'),
             ],
             padding: EdgeInsets.zero,
           ),
@@ -169,9 +280,7 @@ void main() {
     expect(find.text('Rendered'), findsOneWidget);
   });
 
-  testWidgets('html inline links are tappable', (
-    WidgetTester tester,
-  ) async {
+  testWidgets('html inline links are tappable', (WidgetTester tester) async {
     String? tappedUrl;
 
     await tester.pumpWidget(
@@ -220,9 +329,347 @@ void main() {
     );
 
     expect(find.text('1'), findsOneWidget);
-    expect(find.text('1.'), findsOneWidget);
+    expect(_footnoteLabel('alpha'), findsOneWidget);
     expect(find.text('[alpha]'), findsNothing);
-    expect(find.text('Definition'), findsOneWidget);
+  });
+
+  testWidgets('combined footnote definitions render on separate rows', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '[^parser]: Parser definition\n'
+                '[^renderer]: Renderer definition',
+                type: 'footnote_definition',
+              ),
+            ],
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+
+    final Finder parserLine = _footnoteLabel('parser');
+    final Finder rendererLine = _footnoteLabel('renderer');
+
+    expect(parserLine, findsOneWidget);
+    expect(rendererLine, findsOneWidget);
+
+    final Rect parserRect = tester.getRect(parserLine);
+    final Rect rendererRect = tester.getRect(rendererLine);
+
+    expect(rendererRect.top, greaterThan(parserRect.bottom));
+  });
+
+  testWidgets('wrapped footnote definitions do not share a visual line', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 720,
+            child: StreamingMarkdownRenderView(
+              nodes: <MarkdownRenderNode>[
+                _renderNode(
+                  '[^parser]: The parser emits footnote definition nodes.\n'
+                  '[^renderer]: The renderer displays definitions as compact rows.',
+                  type: 'footnote_definition',
+                ),
+              ],
+              padding: EdgeInsets.zero,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final Finder parserLine = _footnoteLabel('parser');
+    final Finder rendererLine = _footnoteLabel('renderer');
+
+    expect(parserLine, findsOneWidget);
+    expect(rendererLine, findsOneWidget);
+
+    final Rect parserLabel = tester.getRect(parserLine);
+    final Rect rendererLabel = tester.getRect(rendererLine);
+
+    expect(rendererLabel.top, greaterThan(parserLabel.bottom));
+  });
+
+  testWidgets('link reference typed footnotes render on separate rows', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '[^parser]: The parser emits footnote definition nodes.\n'
+                '[^renderer]: The renderer displays definitions as compact rows.',
+                type: 'link_reference_definition',
+              ),
+            ],
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+
+    final Finder parserLine = _footnoteLabel('parser');
+    final Finder rendererLine = _footnoteLabel('renderer');
+
+    expect(parserLine, findsOneWidget);
+    expect(rendererLine, findsOneWidget);
+    expect(
+      tester.getRect(rendererLine).top,
+      greaterThan(tester.getRect(parserLine).bottom),
+    );
+  });
+
+  testWidgets('separate link reference footnote nodes render on separate rows',
+      (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '[^parser]: The parser emits footnote definition nodes.',
+                type: 'link_reference_definition',
+                startByte: 0,
+                startRow: 0,
+                endRow: 0,
+              ),
+              _renderNode(
+                '[^renderer]: The renderer displays definitions as compact rows.',
+                type: 'link_reference_definition',
+                startByte: 56,
+                startRow: 1,
+                endRow: 1,
+              ),
+            ],
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+
+    final Finder parserLine = _footnoteLabel('parser');
+    final Finder rendererLine = _footnoteLabel('renderer');
+
+    expect(parserLine, findsOneWidget);
+    expect(rendererLine, findsOneWidget);
+    expect(
+      tester.getRect(rendererLine).top,
+      greaterThan(tester.getRect(parserLine).bottom),
+    );
+  });
+
+  testWidgets('paragraph typed footnote definitions render on separate rows', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '[^parser]: The parser emits footnote definition nodes.\n'
+                '[^renderer]: The renderer displays definitions as compact rows.',
+                type: 'paragraph',
+              ),
+            ],
+            padding: EdgeInsets.zero,
+          ),
+        ),
+      ),
+    );
+
+    final Finder parserLine = _footnoteLabel('parser');
+    final Finder rendererLine = _footnoteLabel('renderer');
+
+    expect(parserLine, findsOneWidget);
+    expect(rendererLine, findsOneWidget);
+    expect(
+      tester.getRect(rendererLine).top,
+      greaterThan(tester.getRect(parserLine).bottom),
+    );
+  });
+
+  testWidgets('underscore delimiters do not add underline decoration', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('_italic_'),
+            ],
+            padding: EdgeInsets.zero,
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+
+    final Text text = tester.widget<Text>(find.text('italic'));
+    expect(text.style?.fontStyle, FontStyle.italic);
+    expect(text.style?.decoration, isNot(TextDecoration.underline));
+  });
+
+  testWidgets('unrevealed list items do not occupy layout', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('- first\n- second', type: 'list'),
+            ],
+            padding: EdgeInsets.zero,
+            tokenArrivalDelay: const Duration(milliseconds: 500),
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('first'), findsOneWidget);
+    expect(find.text('second'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 600));
+
+    expect(find.text('second'), findsOneWidget);
+  });
+
+  testWidgets('second table does not render before first table tokens complete',
+      (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '| A | B |\n| --- | --- |\n| C | D |',
+                type: 'pipe_table',
+                startByte: 0,
+                startRow: 0,
+                endRow: 2,
+              ),
+              _renderNode(
+                '| E | F |\n| --- | --- |\n| G | H |',
+                type: 'pipe_table',
+                startByte: 34,
+                startRow: 4,
+                endRow: 6,
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            tokenArrivalDelay: const Duration(milliseconds: 100),
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('E'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 500));
+
+    expect(find.text('E'), findsOneWidget);
+  });
+
+  testWidgets('table delimiter rows do not render as text or add token wait', (
+    WidgetTester tester,
+  ) async {
+    int waits = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('| --- | --- |', type: 'pipe_table_delimiter_row'),
+            ],
+            padding: EdgeInsets.zero,
+            tokenArrivalDelay: const Duration(milliseconds: 100),
+            onTokenArrivalWait: () {
+              waits += 1;
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('---'), findsNothing);
+    expect(waits, 1);
+  });
+
+  testWidgets('empty table delimiter cells do not render table chrome', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('| --- | --- |', type: 'pipe_table'),
+            ],
+            padding: EdgeInsets.zero,
+            tokenArrivalDelay: const Duration(milliseconds: 100),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.textContaining('---'), findsNothing);
+    expect(find.byType(Table), findsOneWidget);
+    expect(
+      tester.getSize(find.byType(Table)).height,
+      0,
+    );
+  });
+
+  testWidgets('footnote definition body uses token fade animation', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '[^parser]: The parser emits footnote definition nodes.',
+                type: 'paragraph',
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            tokenArrivalDelay: const Duration(milliseconds: 80),
+            tokenFadeInDuration: const Duration(seconds: 2),
+            tokenFadeInCurve: Curves.linear,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(_footnoteLabel('parser'), findsOneWidget);
+    expect(find.text('The'), findsOneWidget);
+    expect(_activeTokenOpacity(tester), greaterThan(0));
+    expect(_activeTokenOpacity(tester), lessThan(1));
   });
 
   testWidgets('task list checkbox aligns with item text', (
@@ -262,14 +709,16 @@ MarkdownRenderNode _renderNode(
   String raw, {
   String type = 'paragraph',
   int startByte = 0,
+  int startRow = 0,
+  int? endRow,
 }) {
   return MarkdownRenderNode(
     type: type,
     depth: 0,
     startByte: startByte,
     endByte: startByte + raw.length,
-    startRow: 0,
-    endRow: 0,
+    startRow: startRow,
+    endRow: endRow ?? startRow,
     raw: raw,
     content: raw,
   );
@@ -291,4 +740,18 @@ TapGestureRecognizer? _findRecognizerForText(InlineSpan span, String target) {
     }
   }
   return null;
+}
+
+double _activeTokenOpacity(WidgetTester tester) {
+  final List<double> activeOpacities = tester
+      .widgetList<Opacity>(find.byType(Opacity))
+      .map((Opacity widget) => widget.opacity)
+      .where((double value) => value > 0 && value < 1)
+      .toList(growable: false);
+  expect(activeOpacities, isNotEmpty);
+  return activeOpacities.first;
+}
+
+Finder _footnoteLabel(String id) {
+  return find.text('$id: ');
 }

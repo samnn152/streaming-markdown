@@ -459,6 +459,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
   }
 
   void _rememberTableSnapshot(MarkdownRenderNode node, _ParsedTable table) {
+    if (!_tableHasContent(table)) {
+      return;
+    }
     final String key = _tableSnapshotKey(node);
     _tableSnapshotCache[key] = table;
     if (_tableSnapshotCache.length <= _tableSnapshotCacheLimit) {
@@ -472,6 +475,22 @@ class StreamingMarkdownRenderView extends StatelessWidget
     return _tableSnapshotCache[_tableSnapshotKey(node)];
   }
 
+  bool _tableHasContent(_ParsedTable table) {
+    for (final String cell in table.headers) {
+      if (cell.trim().isNotEmpty) {
+        return true;
+      }
+    }
+    for (final List<String> row in table.rows) {
+      for (final String cell in row) {
+        if (cell.trim().isNotEmpty) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   String _blockSignature(
     MarkdownRenderNode node,
     String refsDigest,
@@ -483,6 +502,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
   String _renderConfigDigest(BuildContext context) {
     final Duration resolvedFade = _resolvedTokenFadeInDuration();
     final StringBuffer buffer = StringBuffer()
+      ..write('render-behavior:footnote-lines-v3')
+      ..write(':')
       ..write(tokenArrivalDelay.inMicroseconds)
       ..write(':')
       ..write(onTokenArrivalWait.hashCode)
@@ -578,6 +599,14 @@ class StreamingMarkdownRenderView extends StatelessWidget
         );
       case 'paragraph':
         final String normalizedRaw = _normalizedRaw(node.raw);
+        if (_parseFootnoteDefinitions(normalizedRaw).isNotEmpty) {
+          return _buildFootnoteDefinitionBlock(
+            context,
+            node,
+            linkReferences: linkReferences,
+            footnoteNumbers: footnoteNumbers,
+          );
+        }
         _ParsedTable? paragraphTable = _parseMarkdownTable(normalizedRaw);
         if (paragraphTable == null && normalizedRaw.contains('\n')) {
           paragraphTable = _parseMarkdownTable(
@@ -617,7 +646,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
         );
       case 'fenced_code_block':
       case 'indented_code_block':
-        return _buildCodeBlock(node);
+        return _buildCodeBlock(context, node);
       case 'thematic_break':
         return Divider(
           height: 1,
@@ -628,13 +657,14 @@ class StreamingMarkdownRenderView extends StatelessWidget
       case 'table':
       case 'pipe_table_header':
       case 'pipe_table_row':
-      case 'pipe_table_delimiter_row':
         return _buildTableBlock(
           context,
           node,
           linkReferences: linkReferences,
           footnoteNumbers: footnoteNumbers,
         );
+      case 'pipe_table_delimiter_row':
+        return const SizedBox.shrink();
       case 'html_block':
         return _HtmlBlockCard(
           html: _normalizedRaw(node.raw),
@@ -643,13 +673,13 @@ class StreamingMarkdownRenderView extends StatelessWidget
               Theme.of(context).textTheme.bodyLarge,
         );
       case 'front_matter':
-      case 'link_reference_definition':
         return _buildMetadataBlock(
           context,
           node,
           linkReferences: linkReferences,
           footnoteNumbers: footnoteNumbers,
         );
+      case 'link_reference_definition':
       case 'footnote_definition':
         return _buildFootnoteDefinitionBlock(
           context,
@@ -728,14 +758,17 @@ class StreamingMarkdownRenderView extends StatelessWidget
       return const SizedBox.shrink();
     }
 
-    final _InlineImageMatch? image = _matchSingleInlineImage(text);
+    final String normalizedParagraph = text.replaceAll('\n', ' ');
+
+    final _InlineImageMatch? image =
+        _matchSingleInlineImage(normalizedParagraph);
     if (image != null) {
       return _buildImageBlock(context, image);
     }
 
     return _buildInlineMarkdown(
       context,
-      text,
+      normalizedParagraph,
       baseStyle: markdownTheme.paragraphTextStyle ??
           Theme.of(context).textTheme.bodyLarge,
       linkReferences: linkReferences,
@@ -762,36 +795,74 @@ class StreamingMarkdownRenderView extends StatelessWidget
     final TextStyle baseStyle = markdownTheme.paragraphTextStyle ??
         Theme.of(context).textTheme.bodyLarge ??
         const TextStyle(fontSize: 16);
+    final Duration tokenFadeDuration = _resolvedTokenFadeInDuration();
+    final _RevealScheduleScope? scheduleScope = _RevealScheduleScope.maybeOf(
+      context,
+    );
+    final DateTime? tokenScheduleOrigin = scheduleScope?.revealedAt;
+    final Duration resolvedTokenStep =
+        scheduleScope?.tokenArrivalDelay ?? tokenArrivalDelay;
+    int tokenStartIndex = 0;
+    final List<Widget> children = <Widget>[];
+    for (int i = 0; i < parsed.items.length; i++) {
+      final _ParsedListItem item = parsed.items[i];
+      final Widget itemRow = Padding(
+        key: ValueKey<String>('list_item_${item.stableKey}'),
+        padding: EdgeInsets.only(left: item.level * 18.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 28,
+              child: _FadeInTokenHost(
+                initialDelay: tokenScheduleOrigin == null
+                    ? resolvedTokenStep * tokenStartIndex
+                    : Duration.zero,
+                scheduledStart: tokenScheduleOrigin?.add(
+                  resolvedTokenStep * tokenStartIndex,
+                ),
+                duration: tokenFadeDuration,
+                curve: tokenFadeInCurve,
+                animationBuilder: tokenAnimationBuilder,
+                child: _buildListMarker(item, baseStyle),
+              ),
+            ),
+            Expanded(
+              child: _buildInlineMarkdown(
+                context,
+                item.text,
+                tokenStartIndex: tokenStartIndex,
+                baseStyle: baseStyle,
+                linkReferences: linkReferences,
+                footnoteNumbers: footnoteNumbers,
+              ),
+            ),
+          ],
+        ),
+      );
+      children.add(
+        _TokenLayoutGate(
+          initialDelay: tokenScheduleOrigin == null
+              ? resolvedTokenStep * tokenStartIndex
+              : Duration.zero,
+          scheduledStart: tokenScheduleOrigin?.add(
+            resolvedTokenStep * tokenStartIndex,
+          ),
+          child: itemRow,
+        ),
+      );
+      tokenStartIndex += _countAnimatedTokenUnits(
+        item.text,
+        linkReferences: linkReferences,
+      );
+      if (i < parsed.items.length - 1) {
+        children.add(const SizedBox(height: 4));
+      }
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (int i = 0; i < parsed.items.length; i++) ...[
-          Padding(
-            key: ValueKey<String>('list_item_${parsed.items[i].stableKey}'),
-            padding: EdgeInsets.only(left: parsed.items[i].level * 18.0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 28,
-                  child: _buildListMarker(parsed.items[i], baseStyle),
-                ),
-                Expanded(
-                  child: _buildInlineMarkdown(
-                    context,
-                    parsed.items[i].text,
-                    baseStyle: baseStyle,
-                    linkReferences: linkReferences,
-                    footnoteNumbers: footnoteNumbers,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (i < parsed.items.length - 1) const SizedBox(height: 4),
-        ],
-      ],
+      children: children,
     );
   }
 
@@ -848,7 +919,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     );
   }
 
-  Widget _buildCodeBlock(MarkdownRenderNode node) {
+  Widget _buildCodeBlock(BuildContext context, MarkdownRenderNode node) {
     final String code = _codeText(node);
     if (code.isEmpty) {
       return const SizedBox.shrink();
@@ -888,19 +959,49 @@ class StreamingMarkdownRenderView extends StatelessWidget
             ),
           Padding(
             padding: const EdgeInsets.all(12),
-            child: SelectableText(
-              code,
-              style: markdownTheme.codeBlockTextStyle ??
-                  const TextStyle(
-                    color: Color(0xFFE6EDF3),
-                    fontFamily: 'monospace',
-                    fontSize: 13,
-                    height: 1.4,
-                  ),
-            ),
+            child: _buildAnimatedCodeText(context, code),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildAnimatedCodeText(BuildContext context, String code) {
+    final TextStyle style = markdownTheme.codeBlockTextStyle ??
+        const TextStyle(
+          color: Color(0xFFE6EDF3),
+          fontFamily: 'monospace',
+          fontSize: 13,
+          height: 1.4,
+        );
+    final Duration tokenFadeDuration = _resolvedTokenFadeInDuration();
+    final Duration tokenStaggerDelay = tokenArrivalDelay;
+    final _RevealScheduleScope? scheduleScope = _RevealScheduleScope.maybeOf(
+      context,
+    );
+    final DateTime? tokenScheduleOrigin = scheduleScope?.revealedAt;
+    final Duration resolvedTokenStep =
+        scheduleScope?.tokenArrivalDelay ?? tokenStaggerDelay;
+
+    final List<InlineSpan> spans = <InlineSpan>[];
+    _appendTokenizedTextSpans(
+      spans: spans,
+      text: code,
+      style: style,
+      startTokenIndex: 0,
+      fadeDuration: tokenFadeDuration,
+      fadeCurve: tokenFadeInCurve,
+      tokenStaggerDelay: resolvedTokenStep,
+      tokenScheduleOrigin: tokenScheduleOrigin,
+      tokenAnimationBuilder: tokenAnimationBuilder,
+      animatePerWord: true,
+    );
+
+    return RichText(
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      text: TextSpan(style: style, children: spans),
     );
   }
 
@@ -949,57 +1050,135 @@ class StreamingMarkdownRenderView extends StatelessWidget
     required Map<String, String> linkReferences,
     required Map<String, int> footnoteNumbers,
   }) {
+    final _RevealScheduleScope? scheduleScope = _RevealScheduleScope.maybeOf(
+      context,
+    );
+    final DateTime? tokenScheduleOrigin = scheduleScope?.revealedAt;
+    final Duration resolvedTokenStep =
+        scheduleScope?.tokenArrivalDelay ?? tokenArrivalDelay;
+    final Color borderColor =
+        markdownTheme.tableBorderColor ?? const Color(0xFF30363D);
+    final Color headerBackground =
+        markdownTheme.tableHeaderBackgroundColor ?? const Color(0xFF21262D);
+
+    Widget buildRevealedCell({
+      required Widget child,
+      required int tokenUnits,
+      required int tokenStartIndex,
+      required bool isFirstRow,
+      required bool isFirstColumn,
+      required bool isHeader,
+    }) {
+      final Widget cell = Container(
+        decoration: BoxDecoration(
+          color: isHeader ? headerBackground : null,
+          border: Border(
+            top: isFirstRow ? BorderSide(color: borderColor) : BorderSide.none,
+            left: isFirstColumn
+                ? BorderSide(color: borderColor)
+                : BorderSide.none,
+            right: BorderSide(color: borderColor),
+            bottom: BorderSide(color: borderColor),
+          ),
+        ),
+        child: child,
+      );
+
+      if (tokenUnits <= 0) {
+        return const SizedBox.shrink();
+      }
+      return _TokenLayoutGate(
+        initialDelay: tokenScheduleOrigin == null
+            ? resolvedTokenStep * tokenStartIndex
+            : Duration.zero,
+        scheduledStart: tokenScheduleOrigin?.add(
+          resolvedTokenStep * tokenStartIndex,
+        ),
+        child: cell,
+      );
+    }
+
+    int tokenStartIndex = 0;
+    final List<TableRow> rows = <TableRow>[];
+
+    final List<Widget> headerCells = <Widget>[];
+    for (int col = 0; col < table.headers.length; col++) {
+      final String cell = table.headers[col];
+      final int tokenUnits = _countAnimatedTokenUnits(
+        cell,
+        linkReferences: linkReferences,
+      );
+      headerCells.add(
+        buildRevealedCell(
+          tokenStartIndex: tokenStartIndex,
+          tokenUnits: tokenUnits,
+          isFirstRow: true,
+          isFirstColumn: col == 0,
+          isHeader: true,
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: _buildInlineMarkdown(
+              context,
+              cell,
+              tokenStartIndex: tokenStartIndex,
+              baseStyle: const TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+              linkReferences: linkReferences,
+              footnoteNumbers: footnoteNumbers,
+            ),
+          ),
+        ),
+      );
+      tokenStartIndex += tokenUnits;
+    }
+    rows.add(
+      TableRow(
+        children: headerCells,
+      ),
+    );
+
+    for (int rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
+      final List<String> row = table.rows[rowIndex];
+      final List<Widget> bodyCells = <Widget>[];
+      for (int col = 0; col < row.length; col++) {
+        final String cell = row[col];
+        final int tokenUnits = _countAnimatedTokenUnits(
+          cell,
+          linkReferences: linkReferences,
+        );
+        bodyCells.add(
+          buildRevealedCell(
+            tokenStartIndex: tokenStartIndex,
+            tokenUnits: tokenUnits,
+            isFirstRow: false,
+            isFirstColumn: col == 0,
+            isHeader: false,
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: _buildInlineMarkdown(
+                context,
+                cell,
+                tokenStartIndex: tokenStartIndex,
+                baseStyle: const TextStyle(fontSize: 13),
+                linkReferences: linkReferences,
+                footnoteNumbers: footnoteNumbers,
+              ),
+            ),
+          ),
+        );
+        tokenStartIndex += tokenUnits;
+      }
+      rows.add(TableRow(children: bodyCells));
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Table(
         defaultColumnWidth: const IntrinsicColumnWidth(),
         defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-        border: TableBorder.all(
-          color: markdownTheme.tableBorderColor ?? const Color(0xFF30363D),
-        ),
-        children: <TableRow>[
-          TableRow(
-            decoration: BoxDecoration(
-              color: markdownTheme.tableHeaderBackgroundColor ??
-                  const Color(0xFF21262D),
-            ),
-            children: table.headers
-                .map(
-                  (String cell) => Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: _buildInlineMarkdown(
-                      context,
-                      cell,
-                      baseStyle: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                      linkReferences: linkReferences,
-                      footnoteNumbers: footnoteNumbers,
-                    ),
-                  ),
-                )
-                .toList(growable: false),
-          ),
-          ...table.rows.map((List<String> row) {
-            return TableRow(
-              children: row
-                  .map(
-                    (String cell) => Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: _buildInlineMarkdown(
-                        context,
-                        cell,
-                        baseStyle: const TextStyle(fontSize: 13),
-                        linkReferences: linkReferences,
-                        footnoteNumbers: footnoteNumbers,
-                      ),
-                    ),
-                  )
-                  .toList(growable: false),
-            );
-          }),
-        ],
+        children: rows,
       ),
     );
   }
@@ -1048,8 +1227,9 @@ class StreamingMarkdownRenderView extends StatelessWidget
     required Map<String, String> linkReferences,
     required Map<String, int> footnoteNumbers,
   }) {
-    final _FootnoteDefinition? definition = _parseFootnoteDefinition(node.raw);
-    if (definition == null) {
+    final List<_FootnoteDefinition> definitions =
+        _parseFootnoteDefinitions(node.raw);
+    if (definitions.isEmpty) {
       return _buildMetadataBlock(
         context,
         node,
@@ -1060,36 +1240,212 @@ class StreamingMarkdownRenderView extends StatelessWidget
 
     final TextStyle bodyStyle =
         Theme.of(context).textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
-    final int? footnoteNumber = _footnoteNumberForId(
-      footnoteNumbers,
-      definition.id,
-    );
-    final String marker = footnoteNumber?.toString() ?? definition.id;
-    return Row(
+    int tokenStartIndex = 0;
+    final List<Widget> children = <Widget>[];
+    for (int i = 0; i < definitions.length; i++) {
+      final _FootnoteDefinition definition = definitions[i];
+      children.add(
+        _buildFootnoteDefinitionLine(
+          context,
+          definition,
+          tokenStartIndex: tokenStartIndex,
+          bodyStyle: bodyStyle,
+          linkReferences: linkReferences,
+          footnoteNumbers: footnoteNumbers,
+        ),
+      );
+      tokenStartIndex += _countAnimatedTokenUnits(
+        definition.body,
+        linkReferences: linkReferences,
+      );
+      if (i < definitions.length - 1) {
+        children.add(const SizedBox(height: 4));
+      }
+    }
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
+      children: children,
+    );
+  }
+
+  Widget _buildFootnoteDefinitionLine(
+    BuildContext context,
+    _FootnoteDefinition definition, {
+    required int tokenStartIndex,
+    required TextStyle bodyStyle,
+    required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
+  }) {
+    final TextStyle labelStyle = bodyStyle.copyWith(
+      fontWeight: FontWeight.w700,
+      color: const Color(0xFF8B949E),
+    );
+    final List<_InlineToken> tokens = _parseInlineTokens(
+      definition.body.replaceAll('\r', ''),
+      references: linkReferences,
+      allowUnclosedDelimiters: allowUnclosedInlineDelimiters,
+    );
+    final Duration tokenFadeDuration = _resolvedTokenFadeInDuration();
+    final _RevealScheduleScope? scheduleScope = _RevealScheduleScope.maybeOf(
+      context,
+    );
+    final DateTime? tokenScheduleOrigin = scheduleScope?.revealedAt;
+    final Duration resolvedTokenStep =
+        scheduleScope?.tokenArrivalDelay ?? tokenArrivalDelay;
+
+    final List<InlineSpan> spans = <InlineSpan>[
+      WidgetSpan(
+        alignment: PlaceholderAlignment.baseline,
+        baseline: TextBaseline.alphabetic,
+        child: _FadeInTokenHost(
+          key: ValueKey<String>(
+            'footnote_label_${definition.id}_$tokenStartIndex',
+          ),
+          initialDelay: tokenScheduleOrigin == null
+              ? resolvedTokenStep * tokenStartIndex
+              : Duration.zero,
+          scheduledStart: tokenScheduleOrigin?.add(
+            resolvedTokenStep * tokenStartIndex,
+          ),
+          duration: tokenFadeDuration,
+          curve: tokenFadeInCurve,
+          animationBuilder: tokenAnimationBuilder,
+          child: Text('${definition.id}: ', style: labelStyle),
+        ),
+      ),
+    ];
+    _appendAnimatedInlineTokenSpans(
+      context,
+      spans: spans,
+      tokens: tokens,
+      baseStyle: bodyStyle,
+      tokenStartIndex: tokenStartIndex,
+      fadeDuration: tokenFadeDuration,
+      tokenStaggerDelay: resolvedTokenStep,
+      tokenScheduleOrigin: tokenScheduleOrigin,
+      linkReferences: linkReferences,
+      footnoteNumbers: footnoteNumbers,
+    );
+
+    return RichText(
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      text: TextSpan(style: bodyStyle, children: spans),
+    );
+  }
+
+  void _appendAnimatedInlineTokenSpans(
+    BuildContext context, {
+    required List<InlineSpan> spans,
+    required List<_InlineToken> tokens,
+    required TextStyle baseStyle,
+    required int tokenStartIndex,
+    required Duration fadeDuration,
+    required Duration tokenStaggerDelay,
+    required DateTime? tokenScheduleOrigin,
+    required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
+  }) {
+    int visualTokenIndex = tokenStartIndex;
+    for (final _InlineToken token in tokens) {
+      if (token.isImage) {
+        visualTokenIndex = _appendAnimatedWidgetSpan(
+          spans: spans,
+          tokenIndex: visualTokenIndex,
+          fadeDuration: fadeDuration,
+          fadeCurve: tokenFadeInCurve,
+          tokenStaggerDelay: tokenStaggerDelay,
+          tokenScheduleOrigin: tokenScheduleOrigin,
+          tokenAnimationBuilder: tokenAnimationBuilder,
+          alignment: PlaceholderAlignment.middle,
           child: Text(
-            '$marker.',
-            style: bodyStyle.copyWith(
-              fontWeight: FontWeight.w700,
+            token.altText.isEmpty ? '[image]' : '[image: ${token.altText}]',
+            style: baseStyle.copyWith(fontStyle: FontStyle.italic),
+          ),
+        );
+        continue;
+      }
+      if (token.isFootnoteReference) {
+        final int? footnoteNumber = _footnoteNumberForId(
+          footnoteNumbers,
+          token.footnoteReferenceId!,
+        );
+        visualTokenIndex = _appendAnimatedWidgetSpan(
+          spans: spans,
+          tokenIndex: visualTokenIndex,
+          fadeDuration: fadeDuration,
+          fadeCurve: tokenFadeInCurve,
+          tokenStaggerDelay: tokenStaggerDelay,
+          tokenScheduleOrigin: tokenScheduleOrigin,
+          tokenAnimationBuilder: tokenAnimationBuilder,
+          alignment: PlaceholderAlignment.aboveBaseline,
+          baseline: TextBaseline.alphabetic,
+          child: Text(
+            footnoteNumber?.toString() ?? token.footnoteReferenceId!,
+            style: baseStyle.copyWith(
               color: const Color(0xFF8B949E),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
             ),
           ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: _buildInlineMarkdown(
-            context,
-            definition.body,
-            baseStyle: bodyStyle,
-            linkReferences: linkReferences,
-            footnoteNumbers: footnoteNumbers,
-          ),
-        ),
-      ],
-    );
+        );
+        continue;
+      }
+
+      TextStyle style = baseStyle;
+      if (token.style.bold) {
+        style = style.copyWith(fontWeight: FontWeight.w700);
+      }
+      if (token.style.italic) {
+        style = style.copyWith(fontStyle: FontStyle.italic);
+      }
+      if (token.style.strikethrough) {
+        style = style.copyWith(decoration: TextDecoration.lineThrough);
+      }
+      if (token.style.code) {
+        style = markdownTheme.inlineCodeTextStyle ??
+            style.copyWith(fontFamily: 'monospace', fontSize: 12);
+      }
+      if (token.linkUrl != null && token.linkUrl!.isNotEmpty) {
+        style = style.merge(
+          markdownTheme.linkTextStyle ??
+              const TextStyle(
+                color: Color(0xFF58A6FF),
+                decoration: TextDecoration.underline,
+              ),
+        );
+        visualTokenIndex = _appendTokenizedTextSpans(
+          spans: spans,
+          text: token.text,
+          style: style,
+          startTokenIndex: visualTokenIndex,
+          fadeDuration: fadeDuration,
+          fadeCurve: tokenFadeInCurve,
+          tokenStaggerDelay: tokenStaggerDelay,
+          tokenScheduleOrigin: tokenScheduleOrigin,
+          tokenAnimationBuilder: tokenAnimationBuilder,
+          animatePerWord: true,
+          onTap: enableTextSelection
+              ? null
+              : () => _onLinkPressed(context, token.linkUrl!),
+        );
+        continue;
+      }
+      visualTokenIndex = _appendTokenizedTextSpans(
+        spans: spans,
+        text: token.text,
+        style: style,
+        startTokenIndex: visualTokenIndex,
+        fadeDuration: fadeDuration,
+        fadeCurve: tokenFadeInCurve,
+        tokenStaggerDelay: tokenStaggerDelay,
+        tokenScheduleOrigin: tokenScheduleOrigin,
+        tokenAnimationBuilder: tokenAnimationBuilder,
+        animatePerWord: true,
+      );
+    }
   }
 
   Widget _buildImageBlock(BuildContext context, _InlineImageMatch image) {
@@ -1160,6 +1516,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
   Widget _buildInlineMarkdown(
     BuildContext context,
     String text, {
+    int tokenStartIndex = 0,
     TextStyle? baseStyle,
     Map<String, String> linkReferences = const <String, String>{},
     Map<String, int> footnoteNumbers = const <String, int>{},
@@ -1174,7 +1531,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
         Theme.of(context).textTheme.bodyLarge ??
         const TextStyle(fontSize: 16);
     final bool showSelectionOverlay = enableTextSelection;
-    final bool animatePerWord = true;
+    const bool animatePerWord = true;
     final List<_InlineToken> tokens = _parseInlineTokens(
       normalized,
       references: linkReferences,
@@ -1193,24 +1550,29 @@ class StreamingMarkdownRenderView extends StatelessWidget
         scheduleScope?.tokenArrivalDelay ?? tokenStaggerDelay;
 
     final List<InlineSpan> spans = <InlineSpan>[];
-    int visualTokenIndex = 0;
+    int visualTokenIndex = tokenStartIndex;
     for (final _InlineToken token in tokens) {
       if (token.isImage) {
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1F2937),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFF30363D)),
-              ),
-              child: Text(
-                token.altText.isEmpty ? 'image' : 'image: ${token.altText}',
-                style: const TextStyle(fontSize: 12, color: Color(0xFFF0F6FC)),
-              ),
+        visualTokenIndex = _appendAnimatedWidgetSpan(
+          spans: spans,
+          tokenIndex: visualTokenIndex,
+          fadeDuration: tokenFadeDuration,
+          fadeCurve: tokenFadeInCurve,
+          tokenStaggerDelay: resolvedTokenStep,
+          tokenScheduleOrigin: tokenScheduleOrigin,
+          tokenAnimationBuilder: tokenAnimationBuilder,
+          alignment: PlaceholderAlignment.middle,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1F2937),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: const Color(0xFF30363D)),
+            ),
+            child: Text(
+              token.altText.isEmpty ? 'image' : 'image: ${token.altText}',
+              style: const TextStyle(fontSize: 12, color: Color(0xFFF0F6FC)),
             ),
           ),
         );
@@ -1224,19 +1586,25 @@ class StreamingMarkdownRenderView extends StatelessWidget
               fontFamily: 'monospace',
               fontSize: 12,
             );
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 2),
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                color: markdownTheme.inlineCodeBackgroundColor ??
-                    const Color(0xFF21262D),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: Text(token.text, style: inlineCodeStyle),
+        visualTokenIndex = _appendAnimatedWidgetSpan(
+          spans: spans,
+          tokenIndex: visualTokenIndex,
+          fadeDuration: tokenFadeDuration,
+          fadeCurve: tokenFadeInCurve,
+          tokenStaggerDelay: resolvedTokenStep,
+          tokenScheduleOrigin: tokenScheduleOrigin,
+          tokenAnimationBuilder: tokenAnimationBuilder,
+          alignment: PlaceholderAlignment.middle,
+          tokenUnits: _inlineWordCount(token.text),
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+            decoration: BoxDecoration(
+              color: markdownTheme.inlineCodeBackgroundColor ??
+                  const Color(0xFF21262D),
+              borderRadius: BorderRadius.circular(4),
             ),
+            child: Text(token.text, style: inlineCodeStyle),
           ),
         );
         continue;
@@ -1249,19 +1617,24 @@ class StreamingMarkdownRenderView extends StatelessWidget
         );
         final String label =
             footnoteNumber?.toString() ?? token.footnoteReferenceId!;
-        spans.add(
-          WidgetSpan(
-            alignment: PlaceholderAlignment.aboveBaseline,
-            baseline: TextBaseline.alphabetic,
-            child: Padding(
-              padding: const EdgeInsets.only(left: 1),
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xFF8B949E),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                ),
+        visualTokenIndex = _appendAnimatedWidgetSpan(
+          spans: spans,
+          tokenIndex: visualTokenIndex,
+          fadeDuration: tokenFadeDuration,
+          fadeCurve: tokenFadeInCurve,
+          tokenStaggerDelay: resolvedTokenStep,
+          tokenScheduleOrigin: tokenScheduleOrigin,
+          tokenAnimationBuilder: tokenAnimationBuilder,
+          alignment: PlaceholderAlignment.aboveBaseline,
+          baseline: TextBaseline.alphabetic,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 1),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF8B949E),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
@@ -1383,6 +1756,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
       }
 
       if (piece.trim().isEmpty) {
+        // Newlines must stay as raw text spans so blocks like quote/code/footnote
+        // preserve line breaks exactly as source.
         spans.add(TextSpan(text: piece, style: style));
         continue;
       }
@@ -1415,11 +1790,13 @@ class StreamingMarkdownRenderView extends StatelessWidget
           baseline: TextBaseline.alphabetic,
           child: _FadeInTokenHost(
             key: ValueKey<String>('token_${tokenIndex}_${piece.hashCode}'),
+            // Use absolute token index in block so delays do not reset
+            // across inline style segments (links/bold/italic/code...).
             initialDelay: tokenScheduleOrigin == null
-                ? tokenStaggerDelay * (tokenIndex - startTokenIndex)
+                ? tokenStaggerDelay * tokenIndex
                 : Duration.zero,
             scheduledStart: tokenScheduleOrigin?.add(
-              tokenStaggerDelay * (tokenIndex - startTokenIndex),
+              tokenStaggerDelay * tokenIndex,
             ),
             duration: fadeDuration,
             curve: fadeCurve,
@@ -1439,6 +1816,72 @@ class StreamingMarkdownRenderView extends StatelessWidget
       tokenIndex += 1;
     }
     return tokenIndex;
+  }
+
+  int _appendAnimatedWidgetSpan({
+    required List<InlineSpan> spans,
+    required Widget child,
+    required int tokenIndex,
+    required Duration fadeDuration,
+    required Curve fadeCurve,
+    required Duration tokenStaggerDelay,
+    required DateTime? tokenScheduleOrigin,
+    required StreamingMarkdownTokenAnimationBuilder? tokenAnimationBuilder,
+    required PlaceholderAlignment alignment,
+    TextBaseline? baseline,
+    int tokenUnits = 1,
+  }) {
+    spans.add(
+      WidgetSpan(
+        alignment: alignment,
+        baseline: baseline,
+        child: _FadeInTokenHost(
+          key: ValueKey<String>('widget_token_${tokenIndex}_${child.hashCode}'),
+          initialDelay: tokenScheduleOrigin == null
+              ? tokenStaggerDelay * tokenIndex
+              : Duration.zero,
+          scheduledStart: tokenScheduleOrigin?.add(
+            tokenStaggerDelay * tokenIndex,
+          ),
+          duration: fadeDuration,
+          curve: fadeCurve,
+          animationBuilder: tokenAnimationBuilder,
+          child: child,
+        ),
+      ),
+    );
+    return tokenIndex + (tokenUnits <= 0 ? 1 : tokenUnits);
+  }
+
+  int _inlineWordCount(String text) {
+    final int count = RegExp(r'\S+').allMatches(text).length;
+    return count <= 0 ? 1 : count;
+  }
+
+  int _countAnimatedTokenUnits(
+    String text, {
+    required Map<String, String> linkReferences,
+  }) {
+    if (text.trim().isEmpty) {
+      return 0;
+    }
+    final List<_InlineToken> tokens = _parseInlineTokens(
+      text.replaceAll('\r', ''),
+      references: linkReferences,
+      allowUnclosedDelimiters: allowUnclosedInlineDelimiters,
+    );
+    if (tokens.isEmpty) {
+      return _inlineWordCount(text);
+    }
+    int total = 0;
+    for (final _InlineToken token in tokens) {
+      if (token.isImage || token.isFootnoteReference) {
+        total += 1;
+        continue;
+      }
+      total += _inlineWordCount(token.text);
+    }
+    return total;
   }
 
   void _onLinkPressed(BuildContext context, String url) {
@@ -1733,6 +2176,10 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
     }
 
     final Duration delay = _nextDequeueDelayAfterReveal(revealedNode);
+    if (delay <= Duration.zero) {
+      _drainQueue();
+      return;
+    }
     _revealTimer = Timer(delay, () {
       _revealTimer = null;
       _drainQueue();
@@ -1753,6 +2200,14 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
       return Duration.zero;
     }
     final int tokens = _tokenCountForNode(node);
+    if (tokens <= 0) {
+      return Duration.zero;
+    }
+    if (node.type == 'fenced_code_block' ||
+        node.type == 'indented_code_block') {
+      // Avoid long pauses after big code blocks.
+      return widget.tokenArrivalDelay * 8;
+    }
     if (tokens <= 1) {
       return widget.tokenArrivalDelay;
     }
@@ -1760,6 +2215,12 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
   }
 
   int _tokenCountForNode(MarkdownRenderNode node) {
+    if (_isDelimiterNode(node.type)) {
+      return 0;
+    }
+    if (_isTableNode(node.type)) {
+      return _tableContentTokenCount(node);
+    }
     final String text =
         (node.content.isNotEmpty ? node.content : node.raw).trim();
     if (text.isEmpty) {
@@ -1767,6 +2228,75 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
     }
     final int count = RegExp(r'\S+').allMatches(text).length;
     return count <= 0 ? 1 : count;
+  }
+
+  bool _isDelimiterNode(String type) {
+    return type == 'thematic_break' || type == 'pipe_table_delimiter_row';
+  }
+
+  bool _isTableNode(String type) {
+    return type == 'pipe_table' ||
+        type == 'table' ||
+        type == 'pipe_table_header' ||
+        type == 'pipe_table_row' ||
+        type == 'pipe_table_delimiter_row';
+  }
+
+  int _tableContentTokenCount(MarkdownRenderNode node) {
+    int total = 0;
+    bool started = false;
+    for (final String original in node.raw.replaceAll('\r', '').split('\n')) {
+      final String line = original.trimRight();
+      if (line.trim().isEmpty) {
+        if (started) {
+          break;
+        }
+        continue;
+      }
+      if (!line.contains('|')) {
+        if (started) {
+          break;
+        }
+        continue;
+      }
+      started = true;
+      if (_isTableDelimiterLine(line)) {
+        continue;
+      }
+      for (final String cell in _splitSimpleTableLine(line)) {
+        total += RegExp(r'\S+').allMatches(cell).length;
+      }
+    }
+    return total;
+  }
+
+  bool _isTableDelimiterLine(String line) {
+    final List<String> cells = _splitSimpleTableLine(line);
+    if (cells.isEmpty) {
+      return false;
+    }
+    for (final String cell in cells) {
+      if (!RegExp(r'^:?-+:?$').hasMatch(cell.replaceAll(' ', ''))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  List<String> _splitSimpleTableLine(String line) {
+    final String value = line.trim();
+    if (!value.contains('|')) {
+      return <String>[];
+    }
+    final List<String> cells =
+        value.split('|').map((String cell) => cell.trim()).toList();
+    if (value.startsWith('|') && cells.isNotEmpty && cells.first.isEmpty) {
+      cells.removeAt(0);
+    }
+    if (value.endsWith('|') && cells.isNotEmpty && cells.last.isEmpty) {
+      cells.removeLast();
+    }
+    return cells.where((String cell) => cell.isNotEmpty).toList();
   }
 
   void _enterWaiting() {
@@ -1903,6 +2433,146 @@ class _BlockRenderHostState extends State<_BlockRenderHost>
   }
 }
 
+class _TokenLayoutGate extends StatefulWidget {
+  const _TokenLayoutGate({
+    this.initialDelay = Duration.zero,
+    this.scheduledStart,
+    required this.child,
+  });
+
+  final Duration initialDelay;
+  final DateTime? scheduledStart;
+  final Widget child;
+
+  @override
+  State<_TokenLayoutGate> createState() => _TokenLayoutGateState();
+}
+
+class _TokenLayoutGateState extends State<_TokenLayoutGate> {
+  bool _visible = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _configure();
+  }
+
+  @override
+  void didUpdateWidget(covariant _TokenLayoutGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initialDelay != widget.initialDelay ||
+        oldWidget.scheduledStart != widget.scheduledStart) {
+      _configure();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _configure() {
+    _timer?.cancel();
+    _timer = null;
+
+    final DateTime now = DateTime.now();
+    final Duration sanitizedDelay = widget.initialDelay <= Duration.zero
+        ? Duration.zero
+        : widget.initialDelay;
+    final DateTime scheduledStart =
+        widget.scheduledStart ?? now.add(sanitizedDelay);
+
+    if (!now.isBefore(scheduledStart)) {
+      _visible = true;
+      return;
+    }
+
+    _visible = false;
+    _timer = Timer(scheduledStart.difference(now), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _visible = true;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) {
+      return const SizedBox.shrink();
+    }
+    return widget.child;
+  }
+}
+
+class _ScheduledRevealHost extends StatefulWidget {
+  const _ScheduledRevealHost({
+    required this.scheduledStart,
+    required this.child,
+  });
+
+  final DateTime scheduledStart;
+  final Widget child;
+
+  @override
+  State<_ScheduledRevealHost> createState() => _ScheduledRevealHostState();
+}
+
+class _ScheduledRevealHostState extends State<_ScheduledRevealHost> {
+  bool _visible = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _configure();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ScheduledRevealHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.scheduledStart != widget.scheduledStart) {
+      _configure();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _configure() {
+    _timer?.cancel();
+    final DateTime now = DateTime.now();
+    if (!now.isBefore(widget.scheduledStart)) {
+      _visible = true;
+      return;
+    }
+    _visible = false;
+    _timer = Timer(widget.scheduledStart.difference(now), () {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _visible = true;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visible) {
+      return const SizedBox.shrink();
+    }
+    return widget.child;
+  }
+}
+
 class _FadeInTokenHost extends StatefulWidget {
   const _FadeInTokenHost({
     this.initialDelay = Duration.zero,
@@ -1945,6 +2615,9 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
   }
 
   void _configureSchedule() {
+    _timer?.cancel();
+    _timer = null;
+
     if (widget.duration <= Duration.zero) {
       _revealed = true;
       _animationCompleted = true;
@@ -1959,7 +2632,6 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
         : widget.initialDelay;
     final DateTime scheduledStart =
         widget.scheduledStart ?? now.add(sanitizedDelay);
-    final DateTime scheduledEnd = scheduledStart.add(widget.duration);
 
     if (now.isBefore(scheduledStart)) {
       _revealed = false;
@@ -1970,22 +2642,12 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
       return;
     }
 
-    if (!now.isBefore(scheduledEnd)) {
-      _revealed = true;
-      _animationCompleted = true;
-      _animationDuration = Duration.zero;
-      _beginOpacity = 1;
-      return;
-    }
-
-    final Duration elapsed = now.difference(scheduledStart);
-    final int totalMicros = widget.duration.inMicroseconds;
-    final double progress =
-        totalMicros <= 0 ? 1 : elapsed.inMicroseconds / totalMicros;
+    // Do not "catch up" to partial progress when built late.
+    // Each token should start from 0 opacity once it becomes visible.
     _revealed = true;
     _animationCompleted = false;
-    _animationDuration = scheduledEnd.difference(now);
-    _beginOpacity = progress.clamp(0, 1).toDouble();
+    _animationDuration = widget.duration;
+    _beginOpacity = 0;
   }
 
   void _startAnimationNow() {
