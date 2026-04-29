@@ -1,6 +1,6 @@
 import 'dart:ffi';
 
-import 'native_symbols.dart';
+import 'symbols.dart';
 
 /// Returns a pointer to the tree-sitter Markdown [TSLanguage].
 Pointer<Void> markdownLanguage() => getMarkdownLanguageNative();

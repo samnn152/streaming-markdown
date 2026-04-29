@@ -1,5 +1,5 @@
-import 'markdown_syntax_tree.dart';
-import 'rope_string.dart';
+import '../model/syntax_tree.dart';
+import '../model/rope.dart';
 
 /// Native tree-sitter markdown parser facade.
 ///

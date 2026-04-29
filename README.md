@@ -87,7 +87,7 @@ It is designed for chat-like or streaming text interfaces where markdown arrives
 1. Add dependency:
    ```yaml
    dependencies:
-    animated_streaming_markdown: ^0.3.0
+    animated_streaming_markdown: ^0.3.1
    ```
 2. Install packages:
    ```sh
@@ -148,7 +148,7 @@ AnimatedStreamingMarkdown(
   - `enableSelection`
   - `blockBuilder`
 
-For a complete integration sample, check [`example/lib/markdown_cases_demo.dart`](example/lib/markdown_cases_demo.dart).
+For a complete integration sample, check [`example/lib/src/demos/markdown_cases_demo.dart`](example/lib/src/demos/markdown_cases_demo.dart).
 
 ## Documentation
 
@@ -230,7 +230,7 @@ Distributed under the Apache-2.0 License. See [`LICENSE`](LICENSE) for details.
 [contributors-url]: https://github.com/samnn152/streaming-markdown/graphs/contributors
 [forks-shield]: https://img.shields.io/github/forks/samnn152/streaming-markdown.svg?style=for-the-badge
 [forks-url]: https://github.com/samnn152/streaming-markdown/network/members
-[stars-shield]: https://img.shields.io/github/stars/samnn152/streaming-markdown.svg?style=for-the-badge
+[stars-shield]: https://img.shields.io/github/stars/samnn152/streaming-markdown?style=for-the-badge&logo=github&label=Stars
 [stars-url]: https://github.com/samnn152/streaming-markdown/stargazers
 [issues-shield]: https://img.shields.io/github/issues/samnn152/streaming-markdown.svg?style=for-the-badge
 [issues-url]: https://github.com/samnn152/streaming-markdown/issues

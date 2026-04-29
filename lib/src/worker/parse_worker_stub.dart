@@ -1,6 +1,6 @@
-import 'markdown_render_node.dart';
-import 'rope_markdown_parser.dart';
-import 'rope_string.dart';
+import '../model/render_node.dart';
+import '../parser/rope_markdown_parser.dart';
+import '../model/rope.dart';
 
 /// Preferred result type name for parser operations.
 typedef MarkdownParseResult = StreamingMarkdownParseResult;

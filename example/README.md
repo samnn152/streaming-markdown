@@ -22,7 +22,7 @@ Run the standalone Markdown cases catalog:
 
 ```bash
 cd example
-flutter run -t lib/markdown_cases_demo.dart
+flutter run -t lib/src/demos/markdown_cases_demo.dart
 ```
 
 ## Asset source

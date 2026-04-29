@@ -3,7 +3,7 @@ import 'dart:ffi';
 
 import 'package:ffi/ffi.dart';
 
-import 'native_symbols.dart';
+import 'symbols.dart';
 
 /// Native incremental markdown parser session.
 ///

@@ -1,3 +1,10 @@
+## 0.3.1
+
+- Reorganize parser, renderer, model, native, and worker internals into clearer layers for contributors.
+- Split large renderer modules into smaller focused files while keeping the public package API compatible.
+- Move the rope string model under `model/` and clarify parser file names.
+- Fix the GitHub stars badge URL used by the README.
+
 ## 0.3.0
 
 - Add clearer primary API names: `MarkdownStreamParser`, `AnimatedStreamingMarkdown`, `MarkdownBlock`, Flutter-style token animation timing, and typed parse operations.
