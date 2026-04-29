@@ -155,11 +155,7 @@ mixin _StreamingMarkdownTextParsing {
     bool allowLooseWithoutDelimiter = false,
     int minLooseRowsWithoutDelimiter = 1,
   }) {
-    final List<String> lines = raw
-        .split('\n')
-        .map((String line) => line.trimRight())
-        .where((String line) => line.isNotEmpty)
-        .toList(growable: false);
+    final List<String> lines = _firstTableLineRun(raw);
     if (lines.length < 2 && !allowLooseWithoutDelimiter) {
       return null;
     }
@@ -239,6 +235,29 @@ mixin _StreamingMarkdownTextParsing {
         .toList(growable: false);
 
     return _ParsedTable(headers: headers, rows: rows);
+  }
+
+  List<String> _firstTableLineRun(String raw) {
+    final List<String> out = <String>[];
+    bool started = false;
+    for (final String original in raw.split('\n')) {
+      final String line = original.trimRight();
+      if (line.trim().isEmpty) {
+        if (started) {
+          break;
+        }
+        continue;
+      }
+      if (!line.contains('|')) {
+        if (started) {
+          break;
+        }
+        continue;
+      }
+      started = true;
+      out.add(line);
+    }
+    return out;
   }
 
   List<String> _fitTableRowToWidth(List<String> row, int width) {
@@ -356,20 +375,14 @@ mixin _StreamingMarkdownTextParsing {
   Map<String, int> _extractFootnoteNumbers(List<MarkdownRenderNode> nodes) {
     final Map<String, int> numbers = <String, int>{};
     for (final MarkdownRenderNode node in nodes) {
-      if (node.type != 'footnote_definition') {
-        continue;
+      for (final _FootnoteDefinition definition
+          in _parseFootnoteDefinitions(node.raw)) {
+        final String key = _normalizeFootnoteKey(definition.id);
+        if (key.isEmpty || numbers.containsKey(key)) {
+          continue;
+        }
+        numbers[key] = numbers.length + 1;
       }
-      final RegExpMatch? match = RegExp(
-        r'^\s*\[\^([^\]]+)\]:',
-      ).firstMatch(_normalizedRaw(node.raw));
-      if (match == null) {
-        continue;
-      }
-      final String key = _normalizeFootnoteKey(match.group(1)!);
-      if (key.isEmpty || numbers.containsKey(key)) {
-        continue;
-      }
-      numbers[key] = numbers.length + 1;
     }
     return numbers;
   }
@@ -385,7 +398,9 @@ mixin _StreamingMarkdownTextParsing {
       return <_InlineToken>[];
     }
     if (depth > 8) {
-      return <_InlineToken>[_InlineToken.text(text: text, style: style)];
+      return <_InlineToken>[
+        _InlineToken.text(text: text, style: style, sourceMarkdown: text),
+      ];
     }
 
     final List<_InlineToken> tokens = <_InlineToken>[];
@@ -395,7 +410,9 @@ mixin _StreamingMarkdownTextParsing {
       if (plain.isEmpty) {
         return;
       }
-      tokens.add(_InlineToken.text(text: plain.toString(), style: style));
+      final String value = plain.toString();
+      tokens.add(
+          _InlineToken.text(text: value, style: style, sourceMarkdown: value));
       plain.clear();
     }
 
@@ -406,7 +423,11 @@ mixin _StreamingMarkdownTextParsing {
         if (image != null) {
           flushPlain();
           tokens.add(
-            _InlineToken.image(altText: image.alt, imageUrl: image.url),
+            _InlineToken.image(
+              altText: image.alt,
+              imageUrl: image.url,
+              sourceMarkdown: text.substring(i, image.end),
+            ),
           );
           i = image.end;
           continue;
@@ -421,7 +442,10 @@ mixin _StreamingMarkdownTextParsing {
         if (footnoteRef != null) {
           flushPlain();
           tokens.add(
-            _InlineToken.footnote(footnoteReferenceId: footnoteRef.id),
+            _InlineToken.footnote(
+              footnoteReferenceId: footnoteRef.id,
+              sourceMarkdown: text.substring(i, footnoteRef.end),
+            ),
           );
           i = footnoteRef.end;
           continue;
@@ -447,6 +471,7 @@ mixin _StreamingMarkdownTextParsing {
                 text: link.label,
                 style: style,
                 linkUrl: link.url,
+                sourceMarkdown: text.substring(i, link.end),
               ),
             );
           } else {
@@ -454,7 +479,10 @@ mixin _StreamingMarkdownTextParsing {
               if (token.isImage) {
                 tokens.add(token);
               } else {
-                tokens.add(token.withLink(link.url));
+                tokens.add(
+                  token.withLink(link.url,
+                      sourceMarkdown: text.substring(i, link.end)),
+                );
               }
             }
           }
@@ -468,7 +496,14 @@ mixin _StreamingMarkdownTextParsing {
         if (end != -1) {
           flushPlain();
           final String url = text.substring(i + 1, end);
-          tokens.add(_InlineToken.text(text: url, style: style, linkUrl: url));
+          tokens.add(
+            _InlineToken.text(
+              text: url,
+              style: style,
+              linkUrl: url,
+              sourceMarkdown: text.substring(i, end + 1),
+            ),
+          );
           i = end + 1;
           continue;
         }
@@ -481,30 +516,52 @@ mixin _StreamingMarkdownTextParsing {
           _InlineToken.text(
             text: code.inner,
             style: style.copyWith(code: true),
+            sourceMarkdown: text.substring(i, code.end),
           ),
         );
         i = code.end;
         continue;
       }
 
-      final _DelimitedMatch? boldItalic = _matchAnyDelimited(
+      final _DelimitedMatch? boldItalicStar = _matchDelimited(
         text,
         i,
-        const <String>['***', '___'],
-        allowUnclosedDelimiters: allowUnclosedDelimiters,
+        '***',
+        allowUnclosedTail: allowUnclosedDelimiters,
       );
-      if (boldItalic != null) {
+      if (boldItalicStar != null) {
         flushPlain();
         tokens.addAll(
           _parseInlineTokens(
-            boldItalic.inner,
+            boldItalicStar.inner,
             style: style.copyWith(bold: true, italic: true),
             references: references,
             depth: depth + 1,
             allowUnclosedDelimiters: allowUnclosedDelimiters,
           ),
         );
-        i = boldItalic.end;
+        i = boldItalicStar.end;
+        continue;
+      }
+
+      final _DelimitedMatch? boldItalicUnderscore = _matchDelimited(
+        text,
+        i,
+        '___',
+        allowUnclosedTail: allowUnclosedDelimiters,
+      );
+      if (boldItalicUnderscore != null) {
+        flushPlain();
+        tokens.addAll(
+          _parseInlineTokens(
+            boldItalicUnderscore.inner,
+            style: style.copyWith(bold: true, italic: true),
+            references: references,
+            depth: depth + 1,
+            allowUnclosedDelimiters: allowUnclosedDelimiters,
+          ),
+        );
+        i = boldItalicUnderscore.end;
         continue;
       }
 
@@ -547,24 +604,45 @@ mixin _StreamingMarkdownTextParsing {
         continue;
       }
 
-      final _DelimitedMatch? italic = _matchAnyDelimited(
+      final _DelimitedMatch? italicStar = _matchDelimited(
         text,
         i,
-        const <String>['*', '_'],
-        allowUnclosedDelimiters: allowUnclosedDelimiters,
+        '*',
+        allowUnclosedTail: allowUnclosedDelimiters,
       );
-      if (italic != null) {
+      if (italicStar != null) {
         flushPlain();
         tokens.addAll(
           _parseInlineTokens(
-            italic.inner,
+            italicStar.inner,
             style: style.copyWith(italic: true),
             references: references,
             depth: depth + 1,
             allowUnclosedDelimiters: allowUnclosedDelimiters,
           ),
         );
-        i = italic.end;
+        i = italicStar.end;
+        continue;
+      }
+
+      final _DelimitedMatch? italicUnderscore = _matchDelimited(
+        text,
+        i,
+        '_',
+        allowUnclosedTail: allowUnclosedDelimiters,
+      );
+      if (italicUnderscore != null) {
+        flushPlain();
+        tokens.addAll(
+          _parseInlineTokens(
+            italicUnderscore.inner,
+            style: style.copyWith(italic: true),
+            references: references,
+            depth: depth + 1,
+            allowUnclosedDelimiters: allowUnclosedDelimiters,
+          ),
+        );
+        i = italicUnderscore.end;
         continue;
       }
 
@@ -604,31 +682,47 @@ mixin _StreamingMarkdownTextParsing {
     return _FootnoteReferenceMatch(id: match.group(1)!, end: match.end);
   }
 
-  _FootnoteDefinition? _parseFootnoteDefinition(String raw) {
+  List<_FootnoteDefinition> _parseFootnoteDefinitions(String raw) {
     final List<String> lines = _normalizedRaw(raw).split('\n');
     if (lines.isEmpty) {
-      return null;
+      return <_FootnoteDefinition>[];
     }
 
-    final RegExpMatch? first = RegExp(
-      r'^\s*\[\^([^\]]+)\]:\s*(.*)$',
-    ).firstMatch(lines.first);
-    if (first == null) {
-      return null;
+    final RegExp definitionLine = RegExp(r'^\s{0,3}\[\^([^\]]+)\]:\s*(.*)$');
+    final List<_FootnoteDefinition> definitions = <_FootnoteDefinition>[];
+    String? currentId;
+    List<String> currentBody = <String>[];
+
+    void flush() {
+      final String? id = currentId;
+      if (id == null) {
+        return;
+      }
+      definitions.add(
+        _FootnoteDefinition(id: id, body: currentBody.join('\n').trim()),
+      );
     }
 
-    final String id = first.group(1)!.trim();
-    final List<String> body = <String>[first.group(2)!.trim()];
-
-    for (final String line in lines.skip(1)) {
-      if (line.trim().isEmpty) {
-        body.add('');
+    for (final String line in lines) {
+      final RegExpMatch? definition = definitionLine.firstMatch(line);
+      if (definition != null) {
+        flush();
+        currentId = definition.group(1)!.trim();
+        currentBody = <String>[definition.group(2)!.trim()];
         continue;
       }
-      body.add(line.replaceFirst(RegExp(r'^\s{0,4}'), '').trimRight());
+      if (currentId == null) {
+        continue;
+      }
+      if (line.trim().isEmpty) {
+        currentBody.add('');
+        continue;
+      }
+      currentBody.add(line.replaceFirst(RegExp(r'^\s{0,4}'), '').trimRight());
     }
+    flush();
 
-    return _FootnoteDefinition(id: id, body: body.join('\n').trim());
+    return definitions;
   }
 
   _DelimitedMatch? _matchDelimited(
@@ -776,6 +870,46 @@ mixin _StreamingMarkdownTextParsing {
       return node.content.trim();
     }
     return _normalizedRaw(node.raw).trim();
+  }
+
+  String _htmlBlockSelectionText(String raw) {
+    final html_dom.DocumentFragment fragment = html_parser.parseFragment(raw);
+    return _firstHtmlSelectionText(fragment.nodes).trim();
+  }
+
+  String _firstHtmlSelectionText(List<html_dom.Node> nodes) {
+    for (final html_dom.Node node in nodes) {
+      final String text = _htmlSelectionTextForNode(node);
+      if (text.trim().isNotEmpty) {
+        return text;
+      }
+    }
+    return '';
+  }
+
+  String _htmlSelectionTextForNode(html_dom.Node node) {
+    if (node is html_dom.Text) {
+      return node.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    }
+    if (node is! html_dom.Element) {
+      return '';
+    }
+
+    final String tag = (node.localName ?? '').toLowerCase();
+    if (tag == 'img') {
+      return (node.attributes['alt'] ?? node.attributes['src'] ?? '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
+    if (tag == 'br') {
+      return '\n';
+    }
+
+    final String text = _firstHtmlSelectionText(node.nodes);
+    if (text.trim().isNotEmpty) {
+      return text;
+    }
+    return node.text.replaceAll(RegExp(r'\s+'), ' ').trim();
   }
 
   String _headingText(MarkdownRenderNode node) {
@@ -949,19 +1083,25 @@ class _InlineToken {
   const _InlineToken.text({
     required this.text,
     required this.style,
+    required this.sourceMarkdown,
     this.linkUrl,
   })  : altText = '',
         imageUrl = null,
         footnoteReferenceId = null;
 
-  const _InlineToken.image({required this.altText, required this.imageUrl})
-      : text = '',
+  const _InlineToken.image({
+    required this.altText,
+    required this.imageUrl,
+    required this.sourceMarkdown,
+  })  : text = '',
         style = const _InlineStyle(),
         linkUrl = null,
         footnoteReferenceId = null;
 
-  const _InlineToken.footnote({required this.footnoteReferenceId})
-      : text = '',
+  const _InlineToken.footnote({
+    required this.footnoteReferenceId,
+    required this.sourceMarkdown,
+  })  : text = '',
         style = const _InlineStyle(),
         linkUrl = null,
         altText = '',
@@ -973,14 +1113,20 @@ class _InlineToken {
   final String altText;
   final String? imageUrl;
   final String? footnoteReferenceId;
+  final String sourceMarkdown;
 
   bool get isImage => imageUrl != null;
   bool get isFootnoteReference => footnoteReferenceId != null;
 
-  _InlineToken withLink(String url) {
+  _InlineToken withLink(String url, {required String sourceMarkdown}) {
     if (isImage || isFootnoteReference) {
       return this;
     }
-    return _InlineToken.text(text: text, style: style, linkUrl: url);
+    return _InlineToken.text(
+      text: text,
+      style: style,
+      linkUrl: url,
+      sourceMarkdown: sourceMarkdown,
+    );
   }
 }
