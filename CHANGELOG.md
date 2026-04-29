@@ -1,3 +1,9 @@
+## 0.2.2
+
+- Fix select-all Markdown copy so complex blocks keep source delimiters and blocks after footnotes are included.
+- Improve selection-copy coverage for lists, block quotes, code blocks, tables, HTML blocks, and footnotes.
+- Add strict selection regression tests and golden coverage for supported block rendering states.
+
 ## 0.2.1
 
 - Fix example preview stability when macOS window resizing changes layout.
