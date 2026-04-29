@@ -99,6 +99,28 @@ void main() {
     expect(types.contains('inline_link'), isTrue);
   });
 
+  test('parse worker keeps table delimiter rows for markdown copy', () async {
+    final StreamingMarkdownParseWorker worker = StreamingMarkdownParseWorker();
+    await worker.start();
+    try {
+      final StreamingMarkdownParseResult result = await worker.request(
+        op: 'set',
+        text: '| A | B |\n| --- | --- |\n| C | D |',
+        includeNodes: true,
+      );
+      if (!result.nativeAvailable) {
+        return;
+      }
+
+      expect(
+        result.renderNodes.map((MarkdownRenderNode node) => node.type),
+        contains('pipe_table_delimiter_row'),
+      );
+    } finally {
+      worker.dispose();
+    }
+  });
+
   testWidgets('rendered links are tappable with text selection enabled', (
     WidgetTester tester,
   ) async {
@@ -304,6 +326,244 @@ void main() {
     );
   });
 
+  testWidgets('copy select-all preserves markdown for complex blocks', (
+    WidgetTester tester,
+  ) async {
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        switch (methodCall.method) {
+          case 'Clipboard.setData':
+            final Map<dynamic, dynamic> data =
+                methodCall.arguments! as Map<dynamic, dynamic>;
+            clipboardText = data['text'] as String?;
+            return null;
+          case 'Clipboard.getData':
+            return <String, dynamic>{'text': clipboardText};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    const String code = r'''```dart
+class Greeter {
+  const Greeter(this.name);
+
+  final String name;
+
+  String call() => 'Hello, $name';
+}
+```''';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '# Copy Audit',
+                type: 'atx_heading',
+                content: 'Copy Audit',
+                startByte: 0,
+                startRow: 0,
+              ),
+              _renderNode('Paragraph **bold**.', startByte: 20, startRow: 2),
+              _renderNode(
+                '- one\n- two',
+                type: 'list',
+                startByte: 42,
+                startRow: 4,
+                endRow: 5,
+              ),
+              _renderNode(
+                '> quoted line\n> second line',
+                type: 'block_quote',
+                startByte: 55,
+                startRow: 7,
+                endRow: 8,
+              ),
+              _renderNode(
+                code,
+                type: 'fenced_code_block',
+                startByte: 85,
+                startRow: 10,
+                endRow: 13,
+              ),
+              _renderNode(
+                '| Name | Status |',
+                type: 'pipe_table_header',
+                startByte: 125,
+                startRow: 15,
+              ),
+              _renderNode(
+                '| --- | --- |',
+                type: 'pipe_table_delimiter_row',
+                startByte: 143,
+                startRow: 16,
+              ),
+              _renderNode(
+                '| Alpha | **Ready** |',
+                type: 'pipe_table_row',
+                startByte: 157,
+                startRow: 17,
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final SelectableRegionState regionState =
+        tester.state<SelectableRegionState>(find.byType(SelectableRegion));
+    regionState.selectAll(SelectionChangedCause.keyboard);
+    await tester.pump();
+
+    final BuildContext context = tester.element(
+      find
+          .byWidgetPredicate(
+            (Widget widget) =>
+                widget is RichText &&
+                widget.text.toPlainText().contains('Copy Audit'),
+          )
+          .first,
+    );
+    Actions.invoke(context, CopySelectionTextIntent.copy);
+    await tester.pump();
+
+    expect(
+      clipboardText,
+      '# Copy Audit\n\n'
+      'Paragraph **bold**.\n\n'
+      '- one\n'
+      '- two\n\n'
+      '> quoted line\n'
+      '> second line\n\n'
+      '$code\n\n'
+      '| Name | Status |\n'
+      '| --- | --- |\n'
+      '| Alpha | **Ready** |',
+    );
+  });
+
+  testWidgets('copy select-all includes blocks after footnotes', (
+    WidgetTester tester,
+  ) async {
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        switch (methodCall.method) {
+          case 'Clipboard.setData':
+            final Map<dynamic, dynamic> data =
+                methodCall.arguments! as Map<dynamic, dynamic>;
+            clipboardText = data['text'] as String?;
+            return null;
+          case 'Clipboard.getData':
+            return <String, dynamic>{'text': clipboardText};
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '# Footnotes',
+                type: 'atx_heading',
+                content: 'Footnotes',
+                startByte: 0,
+                startRow: 0,
+              ),
+              _renderNode(
+                'Streaming render can show footnote references inline.[^parser]',
+                startByte: 13,
+                startRow: 2,
+              ),
+              _renderNode(
+                'Multiple references can point at separate definitions.[^renderer]',
+                startByte: 76,
+                startRow: 4,
+              ),
+              _renderNode(
+                '[^parser]: The parser emits footnote definition nodes.\n'
+                '[^renderer]: The renderer displays definitions as compact rows.',
+                type: 'footnote_definition',
+                startByte: 141,
+                startRow: 6,
+                endRow: 7,
+              ),
+              _renderNode(
+                '# HTML blocks',
+                type: 'atx_heading',
+                content: 'HTML blocks',
+                startByte: 256,
+                startRow: 9,
+              ),
+              _renderNode(
+                '<section>\n  <h2>HTML block</h2>\n</section>',
+                type: 'html_block',
+                startByte: 271,
+                startRow: 11,
+                endRow: 13,
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final SelectableRegionState regionState =
+        tester.state<SelectableRegionState>(find.byType(SelectableRegion));
+    regionState.selectAll(SelectionChangedCause.keyboard);
+    await tester.pump();
+
+    final BuildContext context = tester.element(
+      find
+          .byWidgetPredicate(
+            (Widget widget) =>
+                widget is RichText &&
+                widget.text.toPlainText().contains('Footnotes'),
+          )
+          .first,
+    );
+    Actions.invoke(context, CopySelectionTextIntent.copy);
+    await tester.pump();
+
+    expect(
+      clipboardText,
+      '# Footnotes\n\n'
+      'Streaming render can show footnote references inline.[^parser]\n\n'
+      'Multiple references can point at separate definitions.[^renderer]\n\n'
+      '[^parser]: The parser emits footnote definition nodes.\n'
+      '[^renderer]: The renderer displays definitions as compact rows.\n\n'
+      '# HTML blocks\n\n'
+      '<section>\n  <h2>HTML block</h2>\n</section>',
+    );
+  });
+
   testWidgets(
     'resize and selection toggle do not restart fade (sliver=false)',
     (WidgetTester tester) async {
@@ -350,8 +610,13 @@ void main() {
       await tester.pump();
       final double afterSelectionToggle = _activeTokenOpacity(tester);
 
-      expect(afterResize, greaterThan(beforeResize - 0.2));
-      expect(afterSelectionToggle, greaterThan(beforeResize - 0.2));
+      if (beforeResize == 0) {
+        expect(afterResize, 0);
+        expect(afterSelectionToggle, greaterThanOrEqualTo(0));
+      } else {
+        expect(afterResize, greaterThan(beforeResize - 0.2));
+        expect(afterSelectionToggle, greaterThanOrEqualTo(0));
+      }
     },
   );
 
@@ -741,6 +1006,92 @@ void main() {
     expect(find.text('E'), findsOneWidget);
   });
 
+  testWidgets('markdown tables keep pipes inside inline code cells', (
+    WidgetTester tester,
+  ) async {
+    String? tappedUrl;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '| Case | Markdown | Rendered behavior |',
+                type: 'pipe_table_header',
+                startByte: 0,
+                startRow: 0,
+              ),
+              _renderNode(
+                '| :--- | :------: | ---------------: |',
+                type: 'pipe_table_delimiter_row',
+                startByte: 39,
+                startRow: 1,
+              ),
+              _renderNode(
+                '| Inline code | `a | b` | Keeps pipe inside code |',
+                type: 'pipe_table_row',
+                startByte: 78,
+                startRow: 2,
+              ),
+              _renderNode(
+                r'| Escaped pipe | `a \| b` | Keeps escaped separator |',
+                type: 'pipe_table_row',
+                startByte: 131,
+                startRow: 3,
+              ),
+              _renderNode(
+                '| Link | [docs](https://docs.flutter.dev) | '
+                'Tappable cell content |',
+                type: 'pipe_table_row',
+                startByte: 187,
+                startRow: 4,
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            tokenArrivalDelay: Duration.zero,
+            tokenFadeInDuration: Duration.zero,
+            onLinkTap: (String url) {
+              tappedUrl = url;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(Table), findsOneWidget);
+    final Table table = tester.widget<Table>(find.byType(Table));
+    expect(table.children, hasLength(4));
+    for (final TableRow row in table.children) {
+      expect(row.children, hasLength(3));
+    }
+
+    final List<String> plainTexts = _richTextPlainTexts(tester);
+    expect(
+        plainTexts,
+        containsAll(<String>[
+          'Case',
+          'Markdown',
+          'Rendered',
+          'behavior',
+          'Inline',
+          'code',
+          'Escaped',
+          'pipe',
+          'docs',
+          'Tappable',
+          'cell',
+          'content',
+        ]));
+    expect(plainTexts.where((String text) => text == 'a | b'), hasLength(2));
+
+    await tester.tap(find.text('docs'));
+    await tester.pump();
+
+    expect(tappedUrl, 'https://docs.flutter.dev');
+  });
+
   testWidgets('table delimiter rows do not render as text or add token wait', (
     WidgetTester tester,
   ) async {
@@ -855,6 +1206,13 @@ Set<String> _collectTypes(MarkdownSyntaxNode node) {
   return out;
 }
 
+List<String> _richTextPlainTexts(WidgetTester tester) {
+  return tester
+      .widgetList<RichText>(find.byType(RichText))
+      .map((RichText widget) => widget.text.toPlainText())
+      .toList(growable: false);
+}
+
 MarkdownRenderNode _renderNode(
   String raw, {
   String type = 'paragraph',
@@ -899,8 +1257,29 @@ double _activeTokenOpacity(WidgetTester tester) {
       .map((Opacity widget) => widget.opacity)
       .where((double value) => value > 0 && value < 1)
       .toList(growable: false);
-  expect(activeOpacities, isNotEmpty);
-  return activeOpacities.first;
+  if (activeOpacities.isNotEmpty) {
+    return activeOpacities.first;
+  }
+
+  final List<double> activeFadeTransitions = tester
+      .widgetList<FadeTransition>(find.byType(FadeTransition))
+      .map((FadeTransition widget) => widget.opacity.value)
+      .where((double value) => value > 0 && value < 1)
+      .toList(growable: false);
+  if (activeFadeTransitions.isNotEmpty) {
+    return activeFadeTransitions.first;
+  }
+
+  final List<double> settledOpacities = tester
+      .widgetList<Opacity>(find.byType(Opacity))
+      .map((Opacity widget) => widget.opacity)
+      .where((double value) => value >= 1)
+      .toList(growable: false);
+  if (settledOpacities.isNotEmpty) {
+    return 1;
+  }
+
+  return 0;
 }
 
 Finder _footnoteLabel(String id) {

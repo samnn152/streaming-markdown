@@ -133,6 +133,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     this.allowUnclosedInlineDelimiters = false,
     this.tokenArrivalDelay = Duration.zero,
     this.onTokenArrivalWait,
+    this.onTokenFadeInEnd,
     this.tokenFadeInRelativeToDelay = 0,
     this.tokenFadeInDuration,
     this.tokenFadeInCurve = Curves.easeOut,
@@ -151,6 +152,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
   final bool allowUnclosedInlineDelimiters;
   final Duration tokenArrivalDelay;
   final VoidCallback? onTokenArrivalWait;
+  final VoidCallback? onTokenFadeInEnd;
   final double tokenFadeInRelativeToDelay;
   final Duration? tokenFadeInDuration;
   final Curve tokenFadeInCurve;
@@ -175,6 +177,31 @@ class StreamingMarkdownRenderView extends StatelessWidget
       return Duration.zero;
     }
     return Duration(microseconds: micros);
+  }
+
+  @visibleForTesting
+  static String debugMarkdownForSelectedPlainText({
+    required List<MarkdownRenderNode> nodes,
+    required String selectedPlainText,
+    bool allowUnclosedInlineDelimiters = false,
+  }) {
+    final StreamingMarkdownRenderView view = StreamingMarkdownRenderView(
+      nodes: nodes,
+      allowUnclosedInlineDelimiters: allowUnclosedInlineDelimiters,
+    );
+    final List<MarkdownRenderNode> blocks =
+        view._collectRenderableBlocks(nodes);
+    final Map<String, String> linkReferences =
+        view._extractLinkReferences(nodes);
+    final Map<String, int> footnoteNumbers =
+        view._extractFootnoteNumbers(nodes);
+    final _MarkdownSelectionProjection projection =
+        view._buildSelectionProjection(
+      blocks,
+      linkReferences: linkReferences,
+      footnoteNumbers: footnoteNumbers,
+    );
+    return projection.markdownForSelectedPlainText(selectedPlainText);
   }
 
   @override
@@ -516,6 +543,8 @@ class StreamingMarkdownRenderView extends StatelessWidget
       ..write(':')
       ..write(onTokenArrivalWait.hashCode)
       ..write(':')
+      ..write(onTokenFadeInEnd.hashCode)
+      ..write(':')
       ..write(resolvedFade.inMicroseconds)
       ..write(':')
       ..write(tokenFadeInCurve)
@@ -572,6 +601,22 @@ class StreamingMarkdownRenderView extends StatelessWidget
             ),
           );
           break;
+        case 'list':
+          segments.add(
+            _listSelectionSegment(
+              block,
+              linkReferences: linkReferences,
+              footnoteNumbers: footnoteNumbers,
+            ),
+          );
+          break;
+        case 'block_quote':
+          segments.add(_quoteSelectionSegment(block));
+          break;
+        case 'fenced_code_block':
+        case 'indented_code_block':
+          segments.add(_codeBlockSelectionSegment(block));
+          break;
         case 'footnote_definition':
         case 'link_reference_definition':
           final List<_FootnoteDefinition> definitions =
@@ -591,6 +636,15 @@ class StreamingMarkdownRenderView extends StatelessWidget
             ),
           );
           break;
+        case 'html_block':
+          segments.add(
+            _MarkdownSelectionSegment.plain(
+              plainText: _htmlBlockSelectionText(raw),
+              markdownText: raw,
+              preserveBlockMarkdownOnPartial: true,
+            ),
+          );
+          break;
         case 'thematic_break':
         case 'pipe_table_delimiter_row':
           segments.add(
@@ -600,6 +654,14 @@ class StreamingMarkdownRenderView extends StatelessWidget
               preserveBlockMarkdownOnPartial: true,
             ),
           );
+          break;
+        case 'pipe_table':
+        case 'table':
+          segments.add(_tableSelectionSegment(
+            raw,
+            linkReferences: linkReferences,
+            footnoteNumbers: footnoteNumbers,
+          ));
           break;
         default:
           segments.add(
@@ -612,6 +674,378 @@ class StreamingMarkdownRenderView extends StatelessWidget
       }
     }
     return _MarkdownSelectionProjection(segments);
+  }
+
+  _MarkdownSelectionSegment _tableSelectionSegment(
+    String raw, {
+    required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
+  }) {
+    final _ParsedTable? table = _parseMarkdownTable(
+      raw,
+      allowLooseWithoutDelimiter: true,
+      minLooseRowsWithoutDelimiter: 2,
+    );
+    if (table == null) {
+      return _MarkdownSelectionSegment.plain(
+        plainText: raw,
+        markdownText: raw,
+        preserveBlockMarkdownOnPartial: true,
+      );
+    }
+
+    final List<_TableSelectionCell> cells = <_TableSelectionCell>[];
+    int cursor = 0;
+    void appendCell({
+      required int rowIndex,
+      required int columnIndex,
+      required String markdown,
+    }) {
+      final _MarkdownSelectionSegment segment = _inlineSelectionSegment(
+        markdown,
+        markdownText: markdown,
+        linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
+      );
+      final int start = cursor;
+      cursor += segment.plainText.length;
+      cells.add(
+        _TableSelectionCell(
+          rowIndex: rowIndex,
+          columnIndex: columnIndex,
+          segment: segment,
+          start: start,
+          end: cursor,
+        ),
+      );
+    }
+
+    for (int columnIndex = 0;
+        columnIndex < table.headers.length;
+        columnIndex++) {
+      appendCell(
+        rowIndex: 0,
+        columnIndex: columnIndex,
+        markdown: table.headers[columnIndex],
+      );
+    }
+    for (int rowIndex = 0; rowIndex < table.rows.length; rowIndex++) {
+      final List<String> row = table.rows[rowIndex];
+      for (int columnIndex = 0; columnIndex < row.length; columnIndex++) {
+        appendCell(
+          rowIndex: rowIndex + 1,
+          columnIndex: columnIndex,
+          markdown: row[columnIndex],
+        );
+      }
+    }
+
+    final String plainText =
+        cells.map((_TableSelectionCell cell) => cell.segment.plainText).join();
+    return _MarkdownSelectionSegment(
+      pieces: <_MarkdownSelectionPiece>[
+        _MarkdownSelectionPiece(plainText: plainText, markdownText: raw),
+      ],
+      fallbackMarkdownText: raw,
+      rangeMarkdownBuilder: (int selectionStart, int selectionEnd) {
+        return _markdownTableForPlainRange(
+          table: table,
+          cells: cells,
+          selectionStart: selectionStart,
+          selectionEnd: selectionEnd,
+        );
+      },
+    );
+  }
+
+  _MarkdownSelectionSegment _listSelectionSegment(
+    MarkdownRenderNode node, {
+    required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
+  }) {
+    final String raw = _normalizedRaw(node.raw);
+    final _ParsedList parsed = _parseListNode(node);
+    if (parsed.items.isEmpty) {
+      return _MarkdownSelectionSegment.plain(
+        plainText: raw,
+        markdownText: raw,
+        preserveBlockMarkdownOnPartial: true,
+      );
+    }
+
+    final List<_ListSelectionItem> items = <_ListSelectionItem>[];
+    final StringBuffer plain = StringBuffer();
+    for (int i = 0; i < parsed.items.length; i++) {
+      final _ParsedListItem item = parsed.items[i];
+      if (i > 0) {
+        plain.write('\n');
+      }
+      final _MarkdownSelectionSegment segment = _inlineSelectionSegment(
+        item.text,
+        markdownText: item.text,
+        linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
+      );
+      final int start = plain.length;
+      plain.write(segment.plainText);
+      items.add(
+        _ListSelectionItem(
+          item: item,
+          segment: segment,
+          start: start,
+          end: plain.length,
+        ),
+      );
+    }
+
+    return _MarkdownSelectionSegment(
+      pieces: <_MarkdownSelectionPiece>[
+        _MarkdownSelectionPiece(plainText: plain.toString(), markdownText: raw),
+      ],
+      fallbackMarkdownText: raw,
+      rangeMarkdownBuilder: (int selectionStart, int selectionEnd) {
+        return _markdownListForPlainRange(
+          items: items,
+          selectionStart: selectionStart,
+          selectionEnd: selectionEnd,
+        );
+      },
+    );
+  }
+
+  String _markdownListForPlainRange({
+    required List<_ListSelectionItem> items,
+    required int selectionStart,
+    required int selectionEnd,
+  }) {
+    final List<String> lines = <String>[];
+    for (final _ListSelectionItem item in items) {
+      if (item.segment.plainText.isEmpty ||
+          selectionEnd <= item.start ||
+          selectionStart >= item.end) {
+        continue;
+      }
+      final int localStart =
+          (selectionStart - item.start).clamp(0, item.segment.plainText.length);
+      final int localEnd =
+          (selectionEnd - item.start).clamp(0, item.segment.plainText.length);
+      final String markdown = item.segment.markdownForPlainRange(
+        localStart,
+        localEnd,
+      );
+      if (markdown.isEmpty) {
+        continue;
+      }
+      lines.add('${_listItemMarkdownPrefix(item.item)}$markdown');
+    }
+    return lines.join('\n');
+  }
+
+  String _listItemMarkdownPrefix(_ParsedListItem item) {
+    final String indent = '  ' * item.level;
+    final String marker = item.ordered ? '${item.order}.' : '-';
+    final String task = item.taskState == null
+        ? ''
+        : item.taskState!
+            ? ' [x]'
+            : ' [ ]';
+    return '$indent$marker$task ';
+  }
+
+  _MarkdownSelectionSegment _quoteSelectionSegment(MarkdownRenderNode node) {
+    final String raw = _normalizedRaw(node.raw);
+    final String plain = _quoteText(node);
+    return _MarkdownSelectionSegment(
+      pieces: <_MarkdownSelectionPiece>[
+        _MarkdownSelectionPiece(plainText: plain, markdownText: raw),
+      ],
+      fallbackMarkdownText: raw,
+      rangeMarkdownBuilder: (int selectionStart, int selectionEnd) {
+        final int start = selectionStart.clamp(0, plain.length);
+        final int end = selectionEnd.clamp(0, plain.length);
+        if (start >= end) {
+          return '';
+        }
+        return _prefixMarkdownQuote(plain.substring(start, end));
+      },
+    );
+  }
+
+  String _prefixMarkdownQuote(String text) {
+    return text
+        .split('\n')
+        .map((String line) => line.isEmpty ? '>' : '> $line')
+        .join('\n');
+  }
+
+  _MarkdownSelectionSegment _codeBlockSelectionSegment(
+    MarkdownRenderNode node,
+  ) {
+    final String raw = _normalizedRaw(node.raw);
+    final String code = _codeText(node);
+    return _MarkdownSelectionSegment(
+      pieces: <_MarkdownSelectionPiece>[
+        _MarkdownSelectionPiece(plainText: code, markdownText: raw),
+      ],
+      fallbackMarkdownText: raw,
+      rangeMarkdownBuilder: (int selectionStart, int selectionEnd) {
+        final int start = selectionStart.clamp(0, code.length);
+        final int end = selectionEnd.clamp(0, code.length);
+        if (start >= end) {
+          return '';
+        }
+        return _wrapMarkdownCodeBlock(node.raw, code.substring(start, end));
+      },
+    );
+  }
+
+  String _wrapMarkdownCodeBlock(String raw, String code) {
+    final String normalized = _normalizedRaw(raw);
+    final RegExpMatch? opener = RegExp(
+      r'^\s*(```+|~~~+)\s*([^\n]*)',
+    ).firstMatch(normalized);
+    final String fence = opener?.group(1) ?? '```';
+    final String info = opener?.group(2)?.trimRight() ?? '';
+    final StringBuffer out = StringBuffer();
+    out.write(fence);
+    if (info.isNotEmpty) {
+      out.write(info.trimLeft());
+    }
+    out.write('\n');
+    out.write(code.trimRight());
+    out.write('\n');
+    out.write(fence);
+    return out.toString();
+  }
+
+  String _markdownTableForPlainRange({
+    required _ParsedTable table,
+    required List<_TableSelectionCell> cells,
+    required int selectionStart,
+    required int selectionEnd,
+  }) {
+    final Map<int, String> selectedHeaders = <int, String>{};
+    final Map<int, Map<int, String>> selectedRows = <int, Map<int, String>>{};
+    final Set<int> selectedColumns = <int>{};
+
+    for (final _TableSelectionCell cell in cells) {
+      if (cell.segment.plainText.isEmpty ||
+          selectionEnd <= cell.start ||
+          selectionStart >= cell.end) {
+        continue;
+      }
+
+      final int localStart =
+          (selectionStart - cell.start).clamp(0, cell.segment.plainText.length);
+      final int localEnd =
+          (selectionEnd - cell.start).clamp(0, cell.segment.plainText.length);
+      final String markdown = cell.segment.markdownForPlainRange(
+        localStart,
+        localEnd,
+      );
+      if (markdown.isEmpty) {
+        continue;
+      }
+
+      selectedColumns.add(cell.columnIndex);
+      if (cell.rowIndex == 0) {
+        selectedHeaders[cell.columnIndex] = markdown;
+      } else {
+        selectedRows.putIfAbsent(
+            cell.rowIndex, () => <int, String>{})[cell.columnIndex] = markdown;
+      }
+    }
+
+    if (selectedColumns.isEmpty) {
+      return '';
+    }
+
+    final List<int> columns = selectedColumns.toList()..sort();
+    final List<String> headers = <String>[
+      for (final int column in columns)
+        selectedHeaders[column] ?? _tableSourceCell(table.headers, column),
+    ];
+    final List<List<String>> rows = <List<String>>[];
+    final List<int> rowIndexes = selectedRows.keys.toList()..sort();
+    for (final int rowIndex in rowIndexes) {
+      final Map<int, String> selectedRow = selectedRows[rowIndex]!;
+      rows.add(<String>[
+        for (final int column in columns) selectedRow[column] ?? '',
+      ]);
+    }
+
+    return _formatMarkdownTable(headers: headers, rows: rows);
+  }
+
+  String _tableSourceCell(List<String> cells, int index) {
+    if (index < 0 || index >= cells.length) {
+      return '';
+    }
+    return cells[index];
+  }
+
+  String _formatMarkdownTable({
+    required List<String> headers,
+    required List<List<String>> rows,
+  }) {
+    if (headers.isEmpty) {
+      return '';
+    }
+
+    final StringBuffer out = StringBuffer();
+    out.writeln(_formatMarkdownTableRow(headers));
+    out.write(
+      _formatMarkdownTableRow(List<String>.filled(headers.length, '---')),
+    );
+    for (final List<String> row in rows) {
+      out.writeln();
+      out.write(_formatMarkdownTableRow(row));
+    }
+    return out.toString();
+  }
+
+  String _formatMarkdownTableRow(List<String> cells) {
+    return '| ${cells.map(_escapeMarkdownTableCell).join(' | ')} |';
+  }
+
+  String _escapeMarkdownTableCell(String markdown) {
+    final StringBuffer out = StringBuffer();
+    int codeFenceLength = 0;
+    bool escaped = false;
+    for (int i = 0; i < markdown.length; i++) {
+      final String ch = markdown[i];
+      if (escaped) {
+        out.write(ch);
+        escaped = false;
+        continue;
+      }
+      if (ch == '\\') {
+        out.write(ch);
+        escaped = true;
+        continue;
+      }
+      if (ch == '`') {
+        int runLength = 1;
+        while (
+            i + runLength < markdown.length && markdown[i + runLength] == '`') {
+          runLength += 1;
+        }
+        if (codeFenceLength == 0) {
+          codeFenceLength = runLength;
+        } else if (runLength >= codeFenceLength) {
+          codeFenceLength = 0;
+        }
+        out.write(markdown.substring(i, i + runLength));
+        i += runLength - 1;
+        continue;
+      }
+      if (ch == '|' && codeFenceLength == 0) {
+        out.write(r'\|');
+        continue;
+      }
+      out.write(ch);
+    }
+    return out.toString();
   }
 
   _MarkdownSelectionSegment _inlineSelectionSegment(
@@ -653,7 +1087,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       pieces.add(
         _MarkdownSelectionPiece(
           plainText: token.text,
-          markdownText: token.sourceMarkdown,
+          markdownText: _semanticMarkdownForInlineToken(token),
         ),
       );
     }
@@ -661,6 +1095,30 @@ class StreamingMarkdownRenderView extends StatelessWidget
       pieces: pieces,
       fallbackMarkdownText: markdownText,
     );
+  }
+
+  String _semanticMarkdownForInlineToken(_InlineToken token) {
+    if (token.sourceMarkdown != token.text) {
+      return token.sourceMarkdown;
+    }
+
+    String markdown = token.text;
+    if (token.style.code) {
+      markdown = '`$markdown`';
+    }
+    if (token.style.strikethrough) {
+      markdown = '~~$markdown~~';
+    }
+    if (token.style.bold && token.style.italic) {
+      return '***$markdown***';
+    }
+    if (token.style.bold) {
+      markdown = '**$markdown**';
+    }
+    if (token.style.italic) {
+      markdown = '_${markdown}_';
+    }
+    return markdown;
   }
 
   String _linkReferencesDigest(Map<String, String> linkReferences) {
@@ -953,6 +1411,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
                 duration: tokenFadeDuration,
                 curve: tokenFadeInCurve,
                 animationBuilder: tokenAnimationBuilder,
+                onFadeInEnd: onTokenFadeInEnd,
                 child: _buildListMarker(item, baseStyle),
               ),
             ),
@@ -1440,6 +1899,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
           duration: tokenFadeDuration,
           curve: tokenFadeInCurve,
           animationBuilder: tokenAnimationBuilder,
+          onFadeInEnd: onTokenFadeInEnd,
           child: Text('${definition.id}: ', style: labelStyle),
         ),
       ),
@@ -1932,6 +2392,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
             duration: fadeDuration,
             curve: fadeCurve,
             animationBuilder: tokenAnimationBuilder,
+            onFadeInEnd: onTokenFadeInEnd,
             child: onTap == null
                 ? tokenWidget
                 : (debugTokenHighlight
@@ -1977,6 +2438,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
           duration: fadeDuration,
           curve: fadeCurve,
           animationBuilder: tokenAnimationBuilder,
+          onFadeInEnd: onTokenFadeInEnd,
           child: child,
         ),
       ),
@@ -2104,6 +2566,11 @@ class _MarkdownSelectionProjection {
   String markdownForSelectedPlainText(String selectedPlainText) {
     final String selected = selectedPlainText.replaceAll('\r', '');
     if (selected.isEmpty) {
+      if (segments.length == 1 &&
+          segments.first.plainText.isEmpty &&
+          segments.first.markdownText.isNotEmpty) {
+        return segments.first.markdownText;
+      }
       return '';
     }
 
@@ -2156,10 +2623,6 @@ class _MarkdownSelectionProjection {
     for (int i = first; i <= last; i++) {
       final _MarkdownSelectionSegment segment = segments[i];
       if (segment.plainText.isEmpty && segment.markdownText.isEmpty) {
-        continue;
-      }
-      if (segment.plainText.isNotEmpty &&
-          !selectedPlainText.contains(segment.plainText)) {
         continue;
       }
       if (out.isNotEmpty) {
@@ -2246,6 +2709,7 @@ class _MarkdownSelectionSegment {
     required this.pieces,
     required this.fallbackMarkdownText,
     this.preserveBlockMarkdownOnPartial = false,
+    this.rangeMarkdownBuilder,
   });
 
   factory _MarkdownSelectionSegment.plain({
@@ -2266,6 +2730,8 @@ class _MarkdownSelectionSegment {
   final List<_MarkdownSelectionPiece> pieces;
   final String fallbackMarkdownText;
   final bool preserveBlockMarkdownOnPartial;
+  final String Function(int selectionStart, int selectionEnd)?
+      rangeMarkdownBuilder;
 
   String get plainText {
     final StringBuffer buffer = StringBuffer();
@@ -2295,6 +2761,19 @@ class _MarkdownSelectionSegment {
     if (selectionStart <= 0 && selectionEnd >= plainText.length) {
       return fallbackMarkdownText;
     }
+    final String Function(int selectionStart, int selectionEnd)? builder =
+        rangeMarkdownBuilder;
+    if (builder != null) {
+      return builder(
+        selectionStart.clamp(0, plainText.length),
+        selectionEnd.clamp(0, plainText.length),
+      );
+    }
+    if (preserveBlockMarkdownOnPartial &&
+        selectionStart < plainText.length &&
+        selectionEnd > 0) {
+      return fallbackMarkdownText;
+    }
 
     int cursor = 0;
     final StringBuffer out = StringBuffer();
@@ -2315,11 +2794,50 @@ class _MarkdownSelectionSegment {
             (selectionStart - start).clamp(0, piece.plainText.length);
         final int localEnd =
             (selectionEnd - start).clamp(0, piece.plainText.length);
-        out.write(piece.plainText.substring(localStart, localEnd));
+        out.write(
+          _slicePieceMarkdown(
+            piece: piece,
+            localStart: localStart,
+            localEnd: localEnd,
+          ),
+        );
         hasMatch = true;
       }
     }
     return hasMatch ? out.toString() : '';
+  }
+
+  String _slicePieceMarkdown({
+    required _MarkdownSelectionPiece piece,
+    required int localStart,
+    required int localEnd,
+  }) {
+    final String plain = piece.plainText;
+    final String markdown = piece.markdownText;
+    if (plain.isEmpty || localStart >= localEnd) {
+      return '';
+    }
+    if (markdown == plain) {
+      return plain.substring(localStart, localEnd);
+    }
+    final int plainIndex = markdown.indexOf(plain);
+    if (plainIndex < 0) {
+      return plain.substring(localStart, localEnd);
+    }
+    final String prefix = markdown.substring(0, plainIndex);
+    final String suffix = markdown.substring(plainIndex + plain.length);
+    if (prefix == '[' && suffix.startsWith('](')) {
+      return '$prefix${plain.substring(localStart, localEnd)}$suffix';
+    }
+    final StringBuffer out = StringBuffer();
+    if (localStart > 0) {
+      out.write(prefix);
+    }
+    out.write(plain.substring(localStart, localEnd));
+    if (localEnd < plain.length) {
+      out.write(suffix);
+    }
+    return out.toString();
   }
 }
 
@@ -2331,6 +2849,36 @@ class _MarkdownSelectionPiece {
 
   final String plainText;
   final String markdownText;
+}
+
+class _TableSelectionCell {
+  const _TableSelectionCell({
+    required this.rowIndex,
+    required this.columnIndex,
+    required this.segment,
+    required this.start,
+    required this.end,
+  });
+
+  final int rowIndex;
+  final int columnIndex;
+  final _MarkdownSelectionSegment segment;
+  final int start;
+  final int end;
+}
+
+class _ListSelectionItem {
+  const _ListSelectionItem({
+    required this.item,
+    required this.segment,
+    required this.start,
+    required this.end,
+  });
+
+  final _ParsedListItem item;
+  final _MarkdownSelectionSegment segment;
+  final int start;
+  final int end;
 }
 
 class _SelectableInlineTextOverlay extends StatefulWidget {
@@ -3016,6 +3564,7 @@ class _FadeInTokenHost extends StatefulWidget {
     required this.duration,
     required this.curve,
     this.animationBuilder,
+    this.onFadeInEnd,
     required this.child,
     super.key,
   });
@@ -3025,6 +3574,7 @@ class _FadeInTokenHost extends StatefulWidget {
   final Duration duration;
   final Curve curve;
   final StreamingMarkdownTokenAnimationBuilder? animationBuilder;
+  final VoidCallback? onFadeInEnd;
   final Widget child;
 
   @override
@@ -3121,6 +3671,7 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
         setState(() {
           _animationCompleted = true;
         });
+        widget.onFadeInEnd?.call();
       },
       builder: (BuildContext context, double opacity, Widget? child) {
         final StreamingMarkdownTokenAnimationBuilder? builder =

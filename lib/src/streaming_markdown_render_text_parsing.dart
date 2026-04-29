@@ -872,6 +872,46 @@ mixin _StreamingMarkdownTextParsing {
     return _normalizedRaw(node.raw).trim();
   }
 
+  String _htmlBlockSelectionText(String raw) {
+    final html_dom.DocumentFragment fragment = html_parser.parseFragment(raw);
+    return _firstHtmlSelectionText(fragment.nodes).trim();
+  }
+
+  String _firstHtmlSelectionText(List<html_dom.Node> nodes) {
+    for (final html_dom.Node node in nodes) {
+      final String text = _htmlSelectionTextForNode(node);
+      if (text.trim().isNotEmpty) {
+        return text;
+      }
+    }
+    return '';
+  }
+
+  String _htmlSelectionTextForNode(html_dom.Node node) {
+    if (node is html_dom.Text) {
+      return node.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    }
+    if (node is! html_dom.Element) {
+      return '';
+    }
+
+    final String tag = (node.localName ?? '').toLowerCase();
+    if (tag == 'img') {
+      return (node.attributes['alt'] ?? node.attributes['src'] ?? '')
+          .replaceAll(RegExp(r'\s+'), ' ')
+          .trim();
+    }
+    if (tag == 'br') {
+      return '\n';
+    }
+
+    final String text = _firstHtmlSelectionText(node.nodes);
+    if (text.trim().isNotEmpty) {
+      return text;
+    }
+    return node.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+  }
+
   String _headingText(MarkdownRenderNode node) {
     if (node.content.trim().isNotEmpty) {
       return node.content.trim();

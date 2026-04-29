@@ -420,10 +420,13 @@ bool _shouldDropNode(String type, String content, String raw) {
     return true;
   }
 
+  if (type == 'pipe_table_delimiter_row') {
+    return false;
+  }
+
   if (type.contains('marker') ||
       type.contains('delimiter') ||
-      type == 'block_continuation' ||
-      type == 'pipe_table_delimiter_row') {
+      type == 'block_continuation') {
     return true;
   }
 
@@ -447,6 +450,7 @@ bool _keepNodeWhenContentEmpty(String type) {
     case 'list':
     case 'list_item':
     case 'pipe_table':
+    case 'pipe_table_delimiter_row':
     case 'table':
     case 'html_block':
     case 'front_matter':

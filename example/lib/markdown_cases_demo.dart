@@ -48,16 +48,13 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
   static const Duration _streamChunkDelay = Duration(milliseconds: 110);
 
   final StreamingMarkdownParseWorker _worker = StreamingMarkdownParseWorker();
-  final GlobalKey<_PreviewPaneState> _previewPaneKey =
-      GlobalKey<_PreviewPaneState>();
 
   List<MarkdownRenderNode> _nodes = const <MarkdownRenderNode>[];
   StreamingMarkdownParseResult? _result;
   int _selectedCase = -1;
   bool _workerStarted = false;
   bool _loading = true;
-  bool _showSource = true;
-  bool _selectionEnabled = false;
+  bool _showSource = false;
   bool _debugTokens = false;
   int _selectedTokenAnimation = 0;
   String? _error;
@@ -234,12 +231,6 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
     });
   }
 
-  void _toggleSelection() {
-    setState(() {
-      _selectionEnabled = !_selectionEnabled;
-    });
-  }
-
   void _toggleDebugTokens() {
     setState(() {
       _debugTokens = !_debugTokens;
@@ -278,17 +269,6 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
                   : Icons.article_outlined,
             ),
             onPressed: _toggleSource,
-          ),
-          IconButton(
-            tooltip: _selectionEnabled
-                ? 'Disable text selection'
-                : 'Enable text selection',
-            icon: Icon(
-              _selectionEnabled
-                  ? Icons.text_fields_outlined
-                  : Icons.text_format_outlined,
-            ),
-            onPressed: _toggleSelection,
           ),
           IconButton(
             tooltip: _debugTokens ? 'Disable token colors' : 'Show tokens',
@@ -333,14 +313,12 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
               streamedCharacters: _streamedCharacters,
               totalCharacters: _totalCharacters,
               showSource: _showSource,
-              enableSelection: _selectionEnabled,
               debugTokens: _debugTokens,
               tokenAnimationBuilder:
                   _tokenAnimationPresets[_selectedTokenAnimation].builder,
               tokenAnimationName:
                   _tokenAnimationPresets[_selectedTokenAnimation].name,
               onLinkTap: _showLinkSnackBar,
-              previewPaneKey: _previewPaneKey,
             );
 
             if (wide) {
@@ -461,12 +439,10 @@ class _Workspace extends StatelessWidget {
     required this.streamedCharacters,
     required this.totalCharacters,
     required this.showSource,
-    required this.enableSelection,
     required this.debugTokens,
     required this.tokenAnimationBuilder,
     required this.tokenAnimationName,
     required this.onLinkTap,
-    required this.previewPaneKey,
   });
 
   final List<MarkdownRenderNode> nodes;
@@ -477,25 +453,21 @@ class _Workspace extends StatelessWidget {
   final int streamedCharacters;
   final int totalCharacters;
   final bool showSource;
-  final bool enableSelection;
   final bool debugTokens;
   final StreamingMarkdownTokenAnimationBuilder tokenAnimationBuilder;
   final String tokenAnimationName;
   final ValueChanged<String> onLinkTap;
-  final GlobalKey<_PreviewPaneState> previewPaneKey;
 
   @override
   Widget build(BuildContext context) {
     final bool split = showSource && MediaQuery.sizeOf(context).width >= 760;
     final Widget preview = _PreviewPane(
-      key: previewPaneKey,
       nodes: nodes,
       result: result,
       error: error,
       loading: loading,
       streamedCharacters: streamedCharacters,
       totalCharacters: totalCharacters,
-      enableSelection: enableSelection,
       debugTokens: debugTokens,
       tokenAnimationBuilder: tokenAnimationBuilder,
       tokenAnimationName: tokenAnimationName,
@@ -529,14 +501,12 @@ class _Workspace extends StatelessWidget {
 
 class _PreviewPane extends StatefulWidget {
   const _PreviewPane({
-    super.key,
     required this.nodes,
     required this.result,
     required this.error,
     required this.loading,
     required this.streamedCharacters,
     required this.totalCharacters,
-    required this.enableSelection,
     required this.debugTokens,
     required this.tokenAnimationBuilder,
     required this.tokenAnimationName,
@@ -549,7 +519,6 @@ class _PreviewPane extends StatefulWidget {
   final bool loading;
   final int streamedCharacters;
   final int totalCharacters;
-  final bool enableSelection;
   final bool debugTokens;
   final StreamingMarkdownTokenAnimationBuilder tokenAnimationBuilder;
   final String tokenAnimationName;
@@ -560,45 +529,6 @@ class _PreviewPane extends StatefulWidget {
 }
 
 class _PreviewPaneState extends State<_PreviewPane> {
-  final ScrollController _previewScrollController = ScrollController();
-  final GlobalKey _scrollViewKey = GlobalKey();
-
-  @override
-  void initState() {
-    super.initState();
-    _scheduleAutoScroll();
-  }
-
-  @override
-  void didUpdateWidget(covariant _PreviewPane oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.streamedCharacters != widget.streamedCharacters ||
-        oldWidget.nodes.length != widget.nodes.length ||
-        oldWidget.loading != widget.loading) {
-      _scheduleAutoScroll();
-    }
-  }
-
-  @override
-  void dispose() {
-    _previewScrollController.dispose();
-    super.dispose();
-  }
-
-  void _scheduleAutoScroll() {
-    if (!widget.loading) {
-      return;
-    }
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_previewScrollController.hasClients) {
-        return;
-      }
-      _previewScrollController.jumpTo(
-        _previewScrollController.position.maxScrollExtent,
-      );
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -615,97 +545,36 @@ class _PreviewPaneState extends State<_PreviewPane> {
         ),
         Expanded(
           child: widget.error == null
-              ? PrimaryScrollController(
-                  controller: _previewScrollController,
-                  automaticallyInheritForPlatforms: TargetPlatform.values
-                      .toSet(),
-                  child: Builder(
-                    builder: (BuildContext context) {
-                      final Widget scrollContent = LayoutBuilder(
-                        builder:
-                            (
-                              BuildContext context,
-                              BoxConstraints viewportConstraints,
-                            ) {
-                              return SingleChildScrollView(
-                                key: _scrollViewKey,
-                                controller: _previewScrollController,
-                                child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    minHeight: viewportConstraints.maxHeight,
-                                  ),
-                                  child: Align(
-                                    alignment: Alignment.bottomLeft,
-                                    child: SizedBox(
-                                      width: double.infinity,
-                                  child: StreamingMarkdownRenderView(
-                                    nodes: widget.nodes,
-                                    emptyPlaceholder: '',
-                                    sliver: false,
-                                    padding: const EdgeInsets.all(20),
-                                    enableTextSelection: widget.enableSelection,
-                                    tokenArrivalDelay: const Duration(
-                                      milliseconds: 350,
-                                    ),
-                                        tokenFadeInDuration: const Duration(
-                                          milliseconds: 1800,
-                                        ),
-                                        tokenAnimationBuilder:
-                                            widget.tokenAnimationBuilder,
-                                        debugTokenHighlight: widget.debugTokens,
-                                        allowUnclosedInlineDelimiters: true,
-                                        onLinkTap: widget.onLinkTap,
-                                        markdownTheme:
-                                            StreamingMarkdownThemeData(
-                                              blockSpacing: 16,
-                                              quoteBackgroundColor: Color(
-                                                0x111F7A68,
-                                              ),
-                                              codeBlockBackgroundColor: Color(
-                                                0xFF0F172A,
-                                              ),
-                                              codeBlockHeaderBackgroundColor:
-                                                  Color(0xFF1E293B),
-                                              metadataBackgroundColor: Color(
-                                                0xFFF8FAFC,
-                                              ),
-                                              metadataBorderColor: Color(
-                                                0xFFCBD5E1,
-                                              ),
-                                              metadataTextStyle: TextStyle(
-                                                color: Color(0xFF334155),
-                                                fontFamily: 'monospace',
-                                                fontSize: 12,
-                                              ),
-                                              tableBorderColor:
-                                                  colors.outlineVariant,
-                                              tableHeaderBackgroundColor:
-                                                  Color.alphaBlend(
-                                                    colors.onSurface.withValues(
-                                                      alpha: 0.06,
-                                                    ),
-                                                    colors.surface,
-                                                  ),
-                                              thematicBreakColor: Color(
-                                                0xFF94A3B8,
-                                              ),
-                                              imageErrorBackgroundColor: Color(
-                                                0xFFE2E8F0,
-                                              ),
-                                              imageErrorTextStyle: TextStyle(
-                                                color: Color(0xFF334155),
-                                              ),
-                                              selectionColor: Color(0x5538BDF8),
-                                            ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                      );
-                      return scrollContent;
-                    },
+              ? _PreviewComparison(
+                  nodes: widget.nodes,
+                  loading: widget.loading,
+                  streamedCharacters: widget.streamedCharacters,
+                  debugTokens: widget.debugTokens,
+                  tokenAnimationBuilder: widget.tokenAnimationBuilder,
+                  onLinkTap: widget.onLinkTap,
+                  markdownTheme: StreamingMarkdownThemeData(
+                    blockSpacing: 16,
+                    quoteBackgroundColor: const Color(0x111F7A68),
+                    codeBlockBackgroundColor: const Color(0xFF0F172A),
+                    codeBlockHeaderBackgroundColor: const Color(0xFF1E293B),
+                    metadataBackgroundColor: const Color(0xFFF8FAFC),
+                    metadataBorderColor: const Color(0xFFCBD5E1),
+                    metadataTextStyle: const TextStyle(
+                      color: Color(0xFF334155),
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                    tableBorderColor: colors.outlineVariant,
+                    tableHeaderBackgroundColor: Color.alphaBlend(
+                      colors.onSurface.withValues(alpha: 0.06),
+                      colors.surface,
+                    ),
+                    thematicBreakColor: const Color(0xFF94A3B8),
+                    imageErrorBackgroundColor: const Color(0xFFE2E8F0),
+                    imageErrorTextStyle: const TextStyle(
+                      color: Color(0xFF334155),
+                    ),
+                    selectionColor: const Color(0x5538BDF8),
                   ),
                 )
               : Center(
@@ -714,6 +583,289 @@ class _PreviewPaneState extends State<_PreviewPane> {
                     child: Text(widget.error!, textAlign: TextAlign.center),
                   ),
                 ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PreviewComparison extends StatelessWidget {
+  const _PreviewComparison({
+    required this.nodes,
+    required this.loading,
+    required this.streamedCharacters,
+    required this.debugTokens,
+    required this.tokenAnimationBuilder,
+    required this.onLinkTap,
+    required this.markdownTheme,
+  });
+
+  final List<MarkdownRenderNode> nodes;
+  final bool loading;
+  final int streamedCharacters;
+  final bool debugTokens;
+  final StreamingMarkdownTokenAnimationBuilder tokenAnimationBuilder;
+  final ValueChanged<String> onLinkTap;
+  final StreamingMarkdownThemeData markdownTheme;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) {
+        final bool sideBySide = constraints.maxWidth >= 560;
+        final Widget selectionOff = _MarkdownPreviewSurface(
+          title: 'Selection off',
+          nodes: nodes,
+          loading: loading,
+          streamedCharacters: streamedCharacters,
+          enableSelection: false,
+          debugTokens: debugTokens,
+          tokenAnimationBuilder: tokenAnimationBuilder,
+          onLinkTap: onLinkTap,
+          markdownTheme: markdownTheme,
+        );
+        final Widget selectionOn = _MarkdownPreviewSurface(
+          title: 'Selection on',
+          nodes: nodes,
+          loading: loading,
+          streamedCharacters: streamedCharacters,
+          enableSelection: true,
+          debugTokens: debugTokens,
+          tokenAnimationBuilder: tokenAnimationBuilder,
+          onLinkTap: onLinkTap,
+          markdownTheme: markdownTheme,
+        );
+
+        if (sideBySide) {
+          return Row(
+            children: [
+              Expanded(child: selectionOff),
+              const VerticalDivider(width: 1),
+              Expanded(child: selectionOn),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            Expanded(child: selectionOff),
+            const Divider(height: 1),
+            Expanded(child: selectionOn),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _MarkdownPreviewSurface extends StatefulWidget {
+  const _MarkdownPreviewSurface({
+    required this.title,
+    required this.nodes,
+    required this.loading,
+    required this.streamedCharacters,
+    required this.enableSelection,
+    required this.debugTokens,
+    required this.tokenAnimationBuilder,
+    required this.onLinkTap,
+    required this.markdownTheme,
+  });
+
+  final String title;
+  final List<MarkdownRenderNode> nodes;
+  final bool loading;
+  final int streamedCharacters;
+  final bool enableSelection;
+  final bool debugTokens;
+  final StreamingMarkdownTokenAnimationBuilder tokenAnimationBuilder;
+  final ValueChanged<String> onLinkTap;
+  final StreamingMarkdownThemeData markdownTheme;
+
+  @override
+  State<_MarkdownPreviewSurface> createState() =>
+      _MarkdownPreviewSurfaceState();
+}
+
+class _MarkdownPreviewSurfaceState extends State<_MarkdownPreviewSurface> {
+  static const Duration _tokenArrivalDelay = Duration(milliseconds: 350);
+  static const Duration _tokenFadeInDuration = Duration(milliseconds: 1800);
+  static const Duration _autoScrollInterval = Duration(milliseconds: 80);
+  static const int _stableTicksBeforeStop = 12;
+
+  final ScrollController _controller = ScrollController();
+  Timer? _autoScrollTimer;
+  double _lastMaxScrollExtent = -1;
+  int _stableTicks = 0;
+  DateTime _autoScrollUntil = DateTime.fromMillisecondsSinceEpoch(0);
+  bool _stickToBottom = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _startAutoScroll();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MarkdownPreviewSurface oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.streamedCharacters != widget.streamedCharacters ||
+        oldWidget.nodes.length != widget.nodes.length ||
+        oldWidget.loading != widget.loading ||
+        oldWidget.enableSelection != widget.enableSelection ||
+        oldWidget.debugTokens != widget.debugTokens) {
+      if (widget.streamedCharacters < oldWidget.streamedCharacters ||
+          (oldWidget.nodes.isNotEmpty && widget.nodes.isEmpty)) {
+        _stickToBottom = true;
+      }
+      _startAutoScroll(activeFor: _estimatedRenderActivityDuration());
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoScrollTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _startAutoScroll({Duration activeFor = const Duration(seconds: 2)}) {
+    _stableTicks = 0;
+    final DateTime until = DateTime.now().add(activeFor);
+    if (until.isAfter(_autoScrollUntil)) {
+      _autoScrollUntil = until;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToRenderedEnd());
+    _autoScrollTimer ??= Timer.periodic(
+      _autoScrollInterval,
+      (_) => _scrollToRenderedEnd(),
+    );
+  }
+
+  void _scrollToRenderedEnd() {
+    if (!mounted || !_controller.hasClients) {
+      return;
+    }
+
+    final ScrollPosition position = _controller.position;
+    final double maxExtent = position.maxScrollExtent;
+    if (_stickToBottom && (maxExtent - position.pixels).abs() > 0.5) {
+      _controller.jumpTo(maxExtent);
+    }
+
+    final bool renderActivityLikelyDone =
+        !widget.loading && DateTime.now().isAfter(_autoScrollUntil);
+    if (maxExtent == _lastMaxScrollExtent && renderActivityLikelyDone) {
+      _stableTicks += 1;
+    } else {
+      _stableTicks = 0;
+      _lastMaxScrollExtent = maxExtent;
+    }
+
+    if (_stableTicks >= _stableTicksBeforeStop) {
+      _autoScrollTimer?.cancel();
+      _autoScrollTimer = null;
+    }
+  }
+
+  bool _isNearBottom(ScrollMetrics metrics) {
+    return metrics.maxScrollExtent - metrics.pixels <= 24;
+  }
+
+  bool _handleScrollNotification(ScrollNotification notification) {
+    if (notification is UserScrollNotification ||
+        notification is ScrollEndNotification) {
+      _stickToBottom = _isNearBottom(notification.metrics);
+    }
+    return false;
+  }
+
+  Duration _estimatedRenderActivityDuration() {
+    if (widget.loading) {
+      return const Duration(seconds: 3);
+    }
+
+    int tokenCount = 0;
+    for (final MarkdownRenderNode node in widget.nodes) {
+      final String text =
+          (node.content.trim().isNotEmpty ? node.content : node.raw).trim();
+      if (text.isEmpty) {
+        continue;
+      }
+      tokenCount += RegExp(r'\S+').allMatches(text).length;
+    }
+
+    if (tokenCount <= 0) {
+      return _tokenFadeInDuration;
+    }
+    return (_tokenArrivalDelay * tokenCount) + _tokenFadeInDuration;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ColorScheme colors = Theme.of(context).colorScheme;
+    return Column(
+      children: [
+        Container(
+          height: 36,
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          alignment: Alignment.centerLeft,
+          color: widget.enableSelection
+              ? colors.primaryContainer
+              : colors.surfaceContainerHighest,
+          child: Text(
+            widget.title,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: widget.enableSelection
+                  ? colors.onPrimaryContainer
+                  : colors.onSurfaceVariant,
+            ),
+          ),
+        ),
+        Expanded(
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              return NotificationListener<ScrollNotification>(
+                onNotification: _handleScrollNotification,
+                child: SingleChildScrollView(
+                  controller: _controller,
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
+                    ),
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: StreamingMarkdownRenderView(
+                          nodes: widget.nodes,
+                          emptyPlaceholder: '',
+                          sliver: false,
+                          padding: const EdgeInsets.all(20),
+                          enableTextSelection: widget.enableSelection,
+                          tokenArrivalDelay: _tokenArrivalDelay,
+                          tokenFadeInDuration: _tokenFadeInDuration,
+                          tokenAnimationBuilder: widget.tokenAnimationBuilder,
+                          debugTokenHighlight: widget.debugTokens,
+                          allowUnclosedInlineDelimiters: true,
+                          onTokenArrivalWait: () => _startAutoScroll(
+                            activeFor:
+                                _tokenFadeInDuration + _tokenArrivalDelay,
+                          ),
+                          onTokenFadeInEnd: () => _startAutoScroll(
+                            activeFor: const Duration(milliseconds: 320),
+                          ),
+                          onLinkTap: widget.onLinkTap,
+                          markdownTheme: widget.markdownTheme,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
         ),
       ],
     );
