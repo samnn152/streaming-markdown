@@ -1,9 +1,16 @@
 import 'markdown_nodes.dart';
 import 'rope_string.dart';
 
+/// Small pure-Dart block parser for [RopeString] sources.
+///
+/// This parser is intentionally lightweight. It is useful for environments
+/// where the native tree-sitter parser is unavailable and for tests that only
+/// need basic block structure.
 class RopeMarkdownParser {
+  /// Creates a pure-Dart rope markdown parser.
   const RopeMarkdownParser();
 
+  /// Parses [source] into a [MarkdownDocument].
   MarkdownDocument parse(RopeString source) {
     final List<_LineSlice> lines = _readLines(source);
     final List<MarkdownBlockNode> blocks = <MarkdownBlockNode>[];
@@ -253,22 +260,31 @@ class RopeMarkdownParser {
   bool _isBlank(String text) => text.trim().isEmpty;
 }
 
+/// Convenience parser that owns a mutable [RopeString] buffer.
+///
+/// Use this when you want a pure-Dart append-and-parse loop without the
+/// isolate-backed [StreamingMarkdownParseWorker].
 class StreamingMarkdownParser {
+  /// Creates a streaming parser backed by [parser].
   StreamingMarkdownParser({RopeMarkdownParser? parser})
       : _parser = parser ?? const RopeMarkdownParser();
 
   final RopeString _buffer = RopeString();
   final RopeMarkdownParser _parser;
 
+  /// Current mutable source buffer.
   RopeString get buffer => _buffer;
 
+  /// Parses the current [buffer].
   MarkdownDocument parse() => _parser.parse(_buffer);
 
+  /// Appends [chunk] to [buffer] and parses the full buffer.
   MarkdownDocument appendAndParse(String chunk) {
     _buffer.append(chunk);
     return parse();
   }
 
+  /// Clears the current [buffer].
   void clear() => _buffer.clear();
 }
 

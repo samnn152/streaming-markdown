@@ -10,7 +10,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/samnn152/streaming-markdown">
-    <img src="https://raw.githubusercontent.com/flutter/website/main/src/_assets/image/flutter-lockup-bg.jpg" alt="Logo" width="120" height="80">
+    <img src="assets/branding/logo.svg" alt="animated_streaming_markdown logo" width="120" height="120">
   </a>
 
 <h3 align="center">animated_streaming_markdown</h3>
@@ -46,6 +46,7 @@
       </ul>
     </li>
     <li><a href="#usage">Usage</a></li>
+    <li><a href="#documentation">Documentation</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#license">License</a></li>
@@ -58,8 +59,8 @@
 
 `animated_streaming_markdown` provides 2 main layers:
 
-- **Parser**: `StreamingMarkdownParseWorker` for incremental `set`/`append` requests
-- **Renderer**: `StreamingMarkdownRenderView` for block rendering + token arrival animations
+- **Parser**: `MarkdownStreamParser` for typed `replace`/`append` requests
+- **Renderer**: `AnimatedStreamingMarkdown` for block rendering + token reveal animations
 
 It is designed for chat-like or streaming text interfaces where markdown arrives progressively and needs stable UI updates.
 
@@ -86,7 +87,7 @@ It is designed for chat-like or streaming text interfaces where markdown arrives
 1. Add dependency:
    ```yaml
    dependencies:
-     animated_streaming_markdown: ^0.2.0
+    animated_streaming_markdown: ^0.3.0
    ```
 2. Install packages:
    ```sh
@@ -100,34 +101,26 @@ It is designed for chat-like or streaming text interfaces where markdown arrives
 ### 1) Start parser worker and stream markdown
 
 ```dart
-final worker = StreamingMarkdownParseWorker();
-await worker.start();
+final parser = MarkdownStreamParser();
+await parser.start();
 
-final setResult = await worker.request(
-  op: 'set',
-  text: '# Hello',
-  includeNodes: true,
-);
+final setResult = await parser.replace('# Hello');
 
-final appendResult = await worker.request(
-  op: 'append',
-  text: '\n\nStreaming **markdown** chunk...',
-  includeNodes: true,
-);
+final appendResult = await parser.append('\n\nStreaming **markdown** chunk...');
 ```
 
-### 2) Render nodes with `StreamingMarkdownRenderView`
+### 2) Render blocks with `AnimatedStreamingMarkdown`
 
 ```dart
-StreamingMarkdownRenderView(
-  nodes: appendResult.renderNodes,
-  sliver: true,
-  tokenArrivalDelay: const Duration(milliseconds: 180),
-  tokenFadeInDuration: const Duration(milliseconds: 240),
-  enableTextSelection: true,
+AnimatedStreamingMarkdown(
+  blocks: appendResult.blocks,
+  asSliver: true,
+  tokenStaggerDelay: const Duration(milliseconds: 180),
+  tokenAnimationDuration: const Duration(milliseconds: 240),
+  enableSelection: true,
   tokenAnimationBuilder: (
     BuildContext context,
-    StreamingMarkdownAnimatedToken token,
+    AnimatedMarkdownToken token,
   ) {
     final t = Curves.easeOutCubic.transform(token.value);
     return Transform.translate(
@@ -140,30 +133,60 @@ StreamingMarkdownRenderView(
 
 ### 3) Important APIs
 
-- `StreamingMarkdownParseWorker.start()`
-- `StreamingMarkdownParseWorker.request(op, text, includeNodes)`
-- `StreamingMarkdownParseWorker.dispose()`
-- `StreamingMarkdownRenderView(...)`
-  - `nodes`
-  - `sliver`
-  - `tokenArrivalDelay`
-  - `tokenFadeInDuration` / `tokenFadeInRelativeToDelay`
+- `MarkdownStreamParser.start()`
+- `MarkdownStreamParser.replace(markdown)`
+- `MarkdownStreamParser.append(chunk)`
+- `MarkdownStreamParser.parse(operation, text)`
+- `MarkdownStreamParser.dispose()`
+- `AnimatedStreamingMarkdown(...)`
+  - `blocks`
+  - `asSliver`
+  - `tokenStaggerDelay`
+  - `tokenAnimationDuration` / `tokenAnimationDurationFactor`
   - `tokenAnimationBuilder`
-  - `onTokenArrivalWait`
-  - `enableTextSelection`
-  - `customBlockBuilder`
+  - `onTokenDelay`
+  - `enableSelection`
+  - `blockBuilder`
 
 For a complete integration sample, check [`example/lib/markdown_cases_demo.dart`](example/lib/markdown_cases_demo.dart).
+
+## Documentation
+
+- [API overview](doc/api-overview.md)
+- [Migration guide: 0.2.x to 0.3.0](doc/migration-0.3.0.md)
+- [Generated Dart API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/)
+
+### Migration notes for 0.3.0
+
+`0.3.0` keeps the `0.2.x` API available, but the preferred names now describe
+the package behavior more directly:
+
+| 0.2.x name | 0.3.x preferred name |
+| --- | --- |
+| `StreamingMarkdownParseWorker` | `MarkdownStreamParser` |
+| `request(op: 'set', ...)` | `replace(markdown)` |
+| `request(op: 'append', ...)` | `append(chunk)` |
+| `StreamingMarkdownParseResult.renderNodes` | `MarkdownParseResult.blocks` |
+| `StreamingMarkdownRenderView` | `AnimatedStreamingMarkdown` |
+| `nodes` | `blocks` |
+| `sliver` | `asSliver` |
+| `tokenArrivalDelay` | `tokenStaggerDelay` |
+| `tokenFadeInDuration` | `tokenAnimationDuration` |
+| `tokenFadeInRelativeToDelay` | `tokenAnimationDurationFactor` |
+| `allowUnclosedInlineDelimiters` | `allowIncompleteInlineSyntax` |
+| `enableTextSelection` | `enableSelection` |
+| `customBlockBuilder` | `blockBuilder` |
+| `markdownTheme` | `theme` |
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## Roadmap
 
-- [x] Incremental parser worker (`set` / `append`)
-- [x] Streaming renderer for markdown block nodes
-- [x] Per-token custom animation builder API
-- [x] Example with multiple animation presets
-- [ ] More parser/renderer benchmark scenarios
+- Done: Incremental parser worker (`replace` / `append`)
+- Done: Streaming renderer for markdown block nodes
+- Done: Per-token custom animation builder API
+- Done: Example with multiple animation presets
+- Planned: More parser/renderer benchmark scenarios
 
 See the [open issues][issues-url] for proposed features and known issues.
 

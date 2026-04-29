@@ -33,7 +33,7 @@ final class ChatState {
         isSubmitting: false,
         status: 'Enter a question and press Submit.',
         answerMarkdown: '',
-        answerNodes: const <MarkdownRenderNode>[],
+        answerNodes: const <MarkdownBlock>[],
         streamedTokens: const <String>[],
       );
 
@@ -41,7 +41,7 @@ final class ChatState {
   final bool isSubmitting;
   final String status;
   final String answerMarkdown;
-  final List<MarkdownRenderNode> answerNodes;
+  final List<MarkdownBlock> answerNodes;
   final List<String> streamedTokens;
 
   ChatState copyWith({
@@ -49,7 +49,7 @@ final class ChatState {
     bool? isSubmitting,
     String? status,
     String? answerMarkdown,
-    List<MarkdownRenderNode>? answerNodes,
+    List<MarkdownBlock>? answerNodes,
     List<String>? streamedTokens,
   }) {
     return ChatState(
@@ -66,7 +66,7 @@ final class ChatState {
 final class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ChatBloc({
     required StreamChatAnswerUseCase streamAnswerUseCase,
-    required StreamingMarkdownParseWorker parserWorker,
+    required MarkdownStreamParser parserWorker,
     required RopeString rope,
   }) : _streamAnswerUseCase = streamAnswerUseCase,
        _parserWorker = parserWorker,
@@ -77,7 +77,7 @@ final class ChatBloc extends Bloc<ChatEvent, ChatState> {
   }
 
   final StreamChatAnswerUseCase _streamAnswerUseCase;
-  final StreamingMarkdownParseWorker _parserWorker;
+  final MarkdownStreamParser _parserWorker;
   final RopeString _rope;
 
   Future<void> _onStarted(ChatStarted event, Emitter<ChatState> emit) async {
@@ -122,7 +122,7 @@ final class ChatBloc extends Bloc<ChatEvent, ChatState> {
         isSubmitting: true,
         status: 'Calling Gemini...',
         answerMarkdown: '',
-        answerNodes: const <MarkdownRenderNode>[],
+        answerNodes: const <MarkdownBlock>[],
         streamedTokens: const <String>[],
       ),
     );
@@ -130,7 +130,7 @@ final class ChatBloc extends Bloc<ChatEvent, ChatState> {
     _rope.clear();
 
     try {
-      await _parserWorker.request(op: 'set', text: '', includeNodes: true);
+      await _parserWorker.replace('');
 
       int chunkCount = 0;
       await for (final String chunk in _streamAnswerUseCase(question)) {
@@ -140,15 +140,16 @@ final class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
         chunkCount += 1;
         _rope.append(chunk);
-        final StreamingMarkdownParseResult parseResult = await _parserWorker
-            .request(op: 'append', text: chunk, includeNodes: true);
+        final MarkdownParseResult parseResult = await _parserWorker.append(
+          chunk,
+        );
         final List<String> nextTokens = List<String>.from(state.streamedTokens)
           ..addAll(_tokenizeChunk(chunk));
 
         emit(
           state.copyWith(
             answerMarkdown: _rope.toString(),
-            answerNodes: parseResult.renderNodes,
+            answerNodes: parseResult.blocks,
             streamedTokens: nextTokens,
             status: 'Receiving data... ($chunkCount chunks)',
           ),

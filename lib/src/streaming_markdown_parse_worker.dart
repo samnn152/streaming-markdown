@@ -8,7 +8,33 @@ import 'native_symbols.dart';
 import 'rope_markdown_parser.dart';
 import 'rope_string.dart';
 
-/// Result returned by [StreamingMarkdownParseWorker.request].
+/// Preferred result type name for parser operations.
+typedef MarkdownParseResult = StreamingMarkdownParseResult;
+
+/// Operation type for [StreamingMarkdownParseWorker.parse].
+///
+/// Use [replace] when the incoming text is a full document snapshot and
+/// [append] when the incoming text is only the next streamed chunk.
+enum MarkdownParseOperation {
+  /// Replace the current parser buffer with a complete markdown document.
+  replace,
+
+  /// Append a markdown chunk to the current parser buffer.
+  append,
+}
+
+extension _MarkdownParseOperationWire on MarkdownParseOperation {
+  String get wireName {
+    switch (this) {
+      case MarkdownParseOperation.append:
+        return 'append';
+      case MarkdownParseOperation.replace:
+        return 'set';
+    }
+  }
+}
+
+/// Result returned by [StreamingMarkdownParseWorker.parse].
 class StreamingMarkdownParseResult {
   const StreamingMarkdownParseResult({
     required this.basicBlockCount,
@@ -38,6 +64,12 @@ class StreamingMarkdownParseResult {
   /// Whether node payloads were included.
   final bool nodesIncluded;
 
+  /// Whether node payloads were included.
+  ///
+  /// Prefer this name in new code. [nodesIncluded] remains available for
+  /// compatibility with `0.2.x`.
+  bool get includesNodes => nodesIncluded;
+
   /// Time spent updating parser state.
   final Duration updateTime;
 
@@ -52,13 +84,18 @@ class StreamingMarkdownParseResult {
 
   /// Nodes intended for UI rendering.
   final List<MarkdownRenderNode> renderNodes;
+
+  /// Markdown blocks ready for [AnimatedStreamingMarkdown].
+  ///
+  /// Prefer this name in new code. [renderNodes] remains available for
+  /// compatibility with `0.2.x`.
+  List<MarkdownRenderNode> get blocks => renderNodes;
 }
 
 /// Isolate-backed markdown parse worker.
 ///
-/// Use [request] with:
-/// - `op: 'set'` for full replacement
-/// - `op: 'append'` for streaming append updates
+/// Use [replace] for full snapshots, [append] for streamed chunks, or [parse]
+/// when the operation is selected at runtime.
 class StreamingMarkdownParseWorker {
   Isolate? _isolate;
   ReceivePort? _receivePort;
@@ -95,7 +132,49 @@ class StreamingMarkdownParseWorker {
     _sendPort = await ready.future;
   }
 
-  /// Sends a parse request and awaits normalized results.
+  /// Parses [text] using a typed [operation].
+  ///
+  /// Set [includeNodes] to `true` when the result will be rendered. When it is
+  /// `false`, the result only contains parser statistics.
+  Future<StreamingMarkdownParseResult> parse({
+    required MarkdownParseOperation operation,
+    required String text,
+    bool includeNodes = true,
+  }) {
+    return request(
+      op: operation.wireName,
+      text: text,
+      includeNodes: includeNodes,
+    );
+  }
+
+  /// Replaces the current parser buffer with [markdown].
+  Future<StreamingMarkdownParseResult> replace(
+    String markdown, {
+    bool includeNodes = true,
+  }) {
+    return parse(
+      operation: MarkdownParseOperation.replace,
+      text: markdown,
+      includeNodes: includeNodes,
+    );
+  }
+
+  /// Appends [chunk] to the current parser buffer.
+  Future<StreamingMarkdownParseResult> append(
+    String chunk, {
+    bool includeNodes = true,
+  }) {
+    return parse(
+      operation: MarkdownParseOperation.append,
+      text: chunk,
+      includeNodes: includeNodes,
+    );
+  }
+
+  /// Sends a legacy string-based parse request and awaits normalized results.
+  ///
+  /// Prefer [parse], [replace], or [append] in new code.
   Future<StreamingMarkdownParseResult> request({
     required String op,
     required String text,
@@ -206,6 +285,14 @@ class StreamingMarkdownParseWorker {
     return 0;
   }
 }
+
+/// Preferred parser name for streamed markdown sources.
+///
+/// This class is intentionally a thin compatibility layer over
+/// [StreamingMarkdownParseWorker]. New code can use [MarkdownStreamParser] to
+/// make the parser role clearer while existing `0.2.x` code can keep using
+/// [StreamingMarkdownParseWorker].
+class MarkdownStreamParser extends StreamingMarkdownParseWorker {}
 
 void _parseWorkerMain(SendPort mainSendPort) {
   final ReceivePort commandPort = ReceivePort();

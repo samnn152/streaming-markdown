@@ -49,6 +49,45 @@ void main() {
     expect(find.text('C'), findsOneWidget);
     expect(waitCount, 2);
   });
+
+  testWidgets('token animation pause stops scheduled block reveal', (
+    WidgetTester tester,
+  ) async {
+    bool paused = false;
+    final List<MarkdownRenderNode> nodes = <MarkdownRenderNode>[
+      _node('A', 0),
+      _node('B', 10),
+    ];
+
+    Future<void> pumpView() {
+      return tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: StreamingMarkdownRenderView(
+              nodes: nodes,
+              padding: EdgeInsets.zero,
+              tokenArrivalDelay: const Duration(milliseconds: 50),
+              tokenAnimationPaused: paused,
+            ),
+          ),
+        ),
+      );
+    }
+
+    await pumpView();
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('B'), findsNothing);
+
+    paused = true;
+    await pumpView();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(find.text('B'), findsNothing);
+
+    paused = false;
+    await pumpView();
+    await tester.pump(const Duration(milliseconds: 50));
+    expect(find.text('B'), findsOneWidget);
+  });
 }
 
 MarkdownRenderNode _node(String raw, int startByte) {

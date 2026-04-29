@@ -39,7 +39,9 @@ class NativeIncrementalMarkdownParser implements Finalizable {
     return NativeIncrementalMarkdownParser._(handle);
   }
 
-  /// Replaces the full source text and reparses.
+  /// Replaces the full source [text] and reparses the document.
+  ///
+  /// Returns `true` when native parsing succeeds.
   bool setText(String text) {
     _ensureNotDisposed();
     final Pointer<Utf8> nativeText = text.toNativeUtf8();
@@ -50,7 +52,9 @@ class NativeIncrementalMarkdownParser implements Finalizable {
     }
   }
 
-  /// Appends a text chunk and reparses incrementally.
+  /// Appends a streaming [text] chunk and reparses incrementally.
+  ///
+  /// Returns `true` when native parsing succeeds.
   bool appendText(String text) {
     _ensureNotDisposed();
     if (text.isEmpty) {
@@ -77,6 +81,10 @@ class NativeIncrementalMarkdownParser implements Finalizable {
   }
 
   /// Returns flattened block nodes as decoded JSON maps.
+  ///
+  /// When [maxNodes] is provided, native output is capped to that number of
+  /// nodes. The returned maps include node type, depth, byte offsets, row
+  /// offsets, and raw source text.
   List<Map<String, Object>> blockNodes({int? maxNodes}) {
     _ensureNotDisposed();
     final int resolvedMaxNodes = maxNodes ?? _defaultMaxNodes;
@@ -114,6 +122,9 @@ class NativeIncrementalMarkdownParser implements Finalizable {
   }
 
   /// Disposes the native parser session.
+  ///
+  /// Calling this more than once is allowed. Methods throw [StateError] after
+  /// the parser has been disposed.
   void dispose() {
     if (_disposed) {
       return;

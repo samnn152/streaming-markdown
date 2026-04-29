@@ -1,17 +1,17 @@
-/// Streaming Markdown public API.
+/// Animated streaming Markdown public API.
 ///
-/// Status:
-/// - This package is currently vibe-coded.
-/// - It is still under active construction and APIs may evolve quickly.
+/// The package provides two layers:
+/// - incremental parsing through [MarkdownStreamParser]
+/// - Flutter rendering through [AnimatedStreamingMarkdown]
 ///
-/// This entrypoint exports the main parsing, rendering, and incremental
-/// streaming APIs.
+/// `0.3.x` introduces clearer API names while keeping the `0.2.x` names
+/// available for migration.
 ///
 /// Typical flow:
-/// 1. Build or append text via [RopeString] or your own source stream.
-/// 2. Parse incrementally via [StreamingMarkdownParseWorker] or
-///    [NativeIncrementalMarkdownParser].
-/// 3. Render [MarkdownRenderNode] blocks via [StreamingMarkdownRenderView].
+/// 1. Create and start a [MarkdownStreamParser].
+/// 2. Call `replace(markdown)` for a full snapshot or `append(chunk)` for a
+///    streamed chunk.
+/// 3. Render `result.blocks` with [AnimatedStreamingMarkdown].
 library animated_streaming_markdown;
 
 /// Native UTF-8 rope buffer implementation backed by C++.
@@ -48,7 +48,7 @@ export 'src/rope_string.dart';
 export 'src/streaming_markdown_parse_worker_stub.dart'
     if (dart.library.ffi) 'src/streaming_markdown_parse_worker.dart';
 
-/// Flutter markdown rendering widget with streaming token animation support.
+/// Flutter markdown rendering widgets with streaming token animation support.
 export 'src/streaming_markdown_render_view.dart';
 
 /// Tree-sitter markdown parser API returning full syntax trees.

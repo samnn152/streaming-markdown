@@ -20,22 +20,39 @@ typedef StreamingMarkdownBlockBuilder = Widget? Function(
 /// Snapshot passed into [StreamingMarkdownTokenAnimationBuilder].
 @immutable
 class StreamingMarkdownAnimatedToken {
+  /// Creates a token animation snapshot.
   const StreamingMarkdownAnimatedToken({
     required this.child,
     required this.animation,
   });
 
+  /// Widget that renders the token content.
   final Widget child;
+
+  /// Animation value for this token, usually from `0.0` to `1.0`.
   final Animation<double> animation;
 
+  /// Current animation value.
   double get value => animation.value;
 }
+
+/// Preferred public name for a token animation snapshot.
+typedef AnimatedMarkdownToken = StreamingMarkdownAnimatedToken;
 
 /// Custom animation hook for each rendered token.
 typedef StreamingMarkdownTokenAnimationBuilder = Widget Function(
   BuildContext context,
   StreamingMarkdownAnimatedToken token,
 );
+
+/// Preferred token animation builder name for [AnimatedStreamingMarkdown].
+typedef AnimatedMarkdownTokenBuilder = StreamingMarkdownTokenAnimationBuilder;
+
+/// Preferred block override builder name for [AnimatedStreamingMarkdown].
+typedef AnimatedMarkdownBlockBuilder = StreamingMarkdownBlockBuilder;
+
+/// Preferred public name for block override context.
+typedef AnimatedMarkdownBlockContext = StreamingMarkdownBlockBuildContext;
 
 /// Context object passed to [StreamingMarkdownBlockBuilder].
 class StreamingMarkdownBlockBuildContext {
@@ -48,6 +65,12 @@ class StreamingMarkdownBlockBuildContext {
   /// Source render node for this block.
   final MarkdownRenderNode node;
 
+  /// Source render node for this block.
+  ///
+  /// Prefer this name in new code. [node] remains available for compatibility
+  /// with `0.2.x`.
+  MarkdownRenderNode get block => node;
+
   /// Link reference map extracted from current node list.
   final Map<String, String> linkReferences;
 
@@ -55,8 +78,9 @@ class StreamingMarkdownBlockBuildContext {
   final Widget defaultWidget;
 }
 
-/// Theme/customization data for [StreamingMarkdownRenderView].
+/// Theme/customization data for [AnimatedStreamingMarkdown].
 class StreamingMarkdownThemeData {
+  /// Creates immutable rendering theme data.
   const StreamingMarkdownThemeData({
     this.blockSpacing = 12,
     this.paragraphTextStyle,
@@ -85,33 +109,144 @@ class StreamingMarkdownThemeData {
     this.selectionColor,
   });
 
+  /// Vertical spacing between top-level rendered blocks.
   final double blockSpacing;
+
+  /// Text style for normal paragraphs.
   final TextStyle? paragraphTextStyle;
+
+  /// Text style for level-1 headings.
   final TextStyle? heading1TextStyle;
+
+  /// Text style for level-2 headings.
   final TextStyle? heading2TextStyle;
+
+  /// Text style for level-3 headings.
   final TextStyle? heading3TextStyle;
+
+  /// Text style for level-4 headings.
   final TextStyle? heading4TextStyle;
+
+  /// Text style for level-5 headings.
   final TextStyle? heading5TextStyle;
+
+  /// Text style for level-6 headings.
   final TextStyle? heading6TextStyle;
+
+  /// Text style merged into inline link spans.
   final TextStyle? linkTextStyle;
+
+  /// Text style for inline code spans.
   final TextStyle? inlineCodeTextStyle;
+
+  /// Background color for inline code spans.
   final Color? inlineCodeBackgroundColor;
+
+  /// Background color for fenced and indented code blocks.
   final Color? codeBlockBackgroundColor;
+
+  /// Header background color for fenced code blocks with a language label.
   final Color? codeBlockHeaderBackgroundColor;
+
+  /// Text style for code block language labels.
   final TextStyle? codeBlockLanguageTextStyle;
+
+  /// Text style for code block contents.
   final TextStyle? codeBlockTextStyle;
+
+  /// Background color for block quotes and callouts.
   final Color? quoteBackgroundColor;
+
+  /// Background color for front matter and metadata blocks.
   final Color? metadataBackgroundColor;
+
+  /// Border color for front matter and metadata blocks.
   final Color? metadataBorderColor;
+
+  /// Text style for front matter and metadata blocks.
   final TextStyle? metadataTextStyle;
+
+  /// Border color for rendered markdown tables.
   final Color? tableBorderColor;
+
+  /// Background color for rendered markdown table headers.
   final Color? tableHeaderBackgroundColor;
+
+  /// Color for thematic break dividers.
   final Color? thematicBreakColor;
+
+  /// Background color used when an image fails to load.
   final Color? imageErrorBackgroundColor;
+
+  /// Text style used when an image fails to load.
   final TextStyle? imageErrorTextStyle;
+
+  /// Selection highlight color used by selectable inline overlays.
   final Color? selectionColor;
 }
 
+/// Preferred theme type name for [AnimatedStreamingMarkdown].
+typedef AnimatedMarkdownThemeData = StreamingMarkdownThemeData;
+
+/// Animated markdown UI renderer for streaming chat-style text.
+///
+/// This is the primary widget API starting in `0.3.0`. It renders parsed
+/// markdown [blocks] with stable block layout, token-level animation, optional
+/// selection, and markdown-aware copy behavior.
+///
+/// Use [StreamingMarkdownParseWorker.replace] or
+/// [StreamingMarkdownParseWorker.append] to produce the [MarkdownRenderNode]
+/// blocks passed here.
+class AnimatedStreamingMarkdown extends StreamingMarkdownRenderView {
+  /// Creates a markdown renderer from parsed [blocks].
+  const AnimatedStreamingMarkdown({
+    super.key,
+    required List<MarkdownRenderNode> blocks,
+    String placeholder = '',
+    EdgeInsetsGeometry padding = const EdgeInsets.all(12),
+    bool asSliver = false,
+    bool allowIncompleteInlineSyntax = false,
+    Duration tokenStaggerDelay = Duration.zero,
+    VoidCallback? onTokenDelay,
+    VoidCallback? onTokenAnimationEnd,
+    double tokenAnimationDurationFactor = 0,
+    Duration? tokenAnimationDuration,
+    Curve tokenAnimationCurve = Curves.easeOut,
+    AnimatedMarkdownTokenBuilder? tokenAnimationBuilder,
+    bool tokenAnimationPaused = false,
+    bool showTokenDebugColors = false,
+    bool enableSelection = false,
+    StreamingMarkdownThemeData theme = const StreamingMarkdownThemeData(),
+    AnimatedMarkdownBlockBuilder? blockBuilder,
+    ValueChanged<String>? onLinkTap,
+  }) : super(
+          nodes: blocks,
+          emptyPlaceholder: placeholder,
+          padding: padding,
+          sliver: asSliver,
+          allowUnclosedInlineDelimiters: allowIncompleteInlineSyntax,
+          tokenArrivalDelay: tokenStaggerDelay,
+          onTokenArrivalWait: onTokenDelay,
+          onTokenFadeInEnd: onTokenAnimationEnd,
+          tokenFadeInRelativeToDelay: tokenAnimationDurationFactor,
+          tokenFadeInDuration: tokenAnimationDuration,
+          tokenFadeInCurve: tokenAnimationCurve,
+          tokenAnimationBuilder: tokenAnimationBuilder,
+          tokenAnimationPaused: tokenAnimationPaused,
+          debugTokenHighlight: showTokenDebugColors,
+          enableTextSelection: enableSelection,
+          markdownTheme: theme,
+          customBlockBuilder: blockBuilder,
+          onLinkTap: onLinkTap,
+        );
+}
+
+/// Legacy name for [AnimatedStreamingMarkdown].
+///
+/// New code should use [AnimatedStreamingMarkdown], whose constructor names
+/// describe the current behavior more directly. This class remains available
+/// for `0.2.x` compatibility.
+///
 /// Streaming markdown UI renderer.
 ///
 /// Input is a list of [MarkdownRenderNode] blocks (typically produced by
@@ -138,6 +273,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
     this.tokenFadeInDuration,
     this.tokenFadeInCurve = Curves.easeOut,
     this.tokenAnimationBuilder,
+    this.tokenAnimationPaused = false,
     this.debugTokenHighlight = false,
     this.enableTextSelection = false,
     this.markdownTheme = const StreamingMarkdownThemeData(),
@@ -145,22 +281,60 @@ class StreamingMarkdownRenderView extends StatelessWidget
     this.onLinkTap,
   });
 
+  /// Render nodes to display.
   final List<MarkdownRenderNode> nodes;
+
+  /// Placeholder text shown when [nodes] contains no renderable blocks.
   final String emptyPlaceholder;
+
+  /// Outer padding around rendered content.
   final EdgeInsetsGeometry padding;
+
+  /// Whether this widget should return a sliver instead of a box widget.
   final bool sliver;
+
+  /// Allows unfinished inline emphasis/link delimiters to render during
+  /// streaming instead of waiting for the closing delimiter.
   final bool allowUnclosedInlineDelimiters;
+
+  /// Delay between adjacent token reveal starts.
   final Duration tokenArrivalDelay;
+
+  /// Called when the renderer is waiting for a delayed token reveal.
   final VoidCallback? onTokenArrivalWait;
+
+  /// Called when a token fade animation completes.
   final VoidCallback? onTokenFadeInEnd;
+
+  /// Computes fade duration as a multiple of [tokenArrivalDelay] when
+  /// [tokenFadeInDuration] is not provided.
   final double tokenFadeInRelativeToDelay;
+
+  /// Absolute fade duration for each token.
   final Duration? tokenFadeInDuration;
+
+  /// Curve applied to each token fade animation.
   final Curve tokenFadeInCurve;
+
+  /// Optional custom token animation builder.
   final StreamingMarkdownTokenAnimationBuilder? tokenAnimationBuilder;
+
+  /// Pauses token and block reveal scheduling without changing parser input.
+  final bool tokenAnimationPaused;
+
+  /// Paints token debug backgrounds to inspect token boundaries.
   final bool debugTokenHighlight;
+
+  /// Enables selectable text and markdown-aware copy behavior.
   final bool enableTextSelection;
+
+  /// Theme data for markdown block styling.
   final StreamingMarkdownThemeData markdownTheme;
+
+  /// Optional block override hook.
   final StreamingMarkdownBlockBuilder? customBlockBuilder;
+
+  /// Link tap callback. Defaults to no-op when omitted.
   final ValueChanged<String>? onLinkTap;
 
   Duration _resolvedTokenFadeInDuration() {
@@ -231,6 +405,7 @@ class StreamingMarkdownRenderView extends StatelessWidget
       padding: padding,
       blockSpacing: markdownTheme.blockSpacing,
       tokenArrivalDelay: tokenArrivalDelay,
+      paused: tokenAnimationPaused,
       onWait: onTokenArrivalWait,
       blockIdentityBuilder: _blockIdentity,
       blockBuilder: (BuildContext context, MarkdownRenderNode block) {
@@ -3047,6 +3222,7 @@ class _SequencedBlockList extends StatefulWidget {
     required this.padding,
     required this.blockSpacing,
     required this.tokenArrivalDelay,
+    required this.paused,
     required this.blockIdentityBuilder,
     required this.blockBuilder,
     this.onWait,
@@ -3057,6 +3233,7 @@ class _SequencedBlockList extends StatefulWidget {
   final EdgeInsetsGeometry padding;
   final double blockSpacing;
   final Duration tokenArrivalDelay;
+  final bool paused;
   final VoidCallback? onWait;
   final String Function(MarkdownRenderNode node) blockIdentityBuilder;
   final Widget Function(BuildContext context, MarkdownRenderNode node)
@@ -3071,6 +3248,9 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
   final LinkedHashSet<String> _pendingIds = LinkedHashSet<String>();
   final Map<String, DateTime> _revealedAt = <String, DateTime>{};
   Timer? _revealTimer;
+  DateTime? _revealTimerStartedAt;
+  Duration? _revealTimerDelay;
+  Duration? _pausedRevealDelay;
   bool _isWaiting = false;
 
   @override
@@ -3082,6 +3262,16 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
   @override
   void didUpdateWidget(covariant _SequencedBlockList oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!oldWidget.paused && widget.paused) {
+      _syncSchedule();
+      _pauseRevealTimer();
+      return;
+    }
+    if (oldWidget.paused && !widget.paused) {
+      _syncSchedule();
+      _resumeRevealTimer();
+      return;
+    }
     _syncSchedule();
   }
 
@@ -3102,6 +3292,10 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
 
     if (orderedIds.isEmpty) {
       _revealTimer?.cancel();
+      _revealTimer = null;
+      _revealTimerStartedAt = null;
+      _revealTimerDelay = null;
+      _pausedRevealDelay = null;
       _pendingIds.clear();
       if (_visibleIds.isNotEmpty && mounted) {
         setState(() {
@@ -3125,19 +3319,19 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
 
     if (queuedNew) {
       _isWaiting = false;
-      if (_revealTimer == null) {
+      if (!widget.paused && _revealTimer == null) {
         _drainQueue();
       }
       return;
     }
 
-    if (_pendingIds.isEmpty && _revealTimer == null) {
+    if (!widget.paused && _pendingIds.isEmpty && _revealTimer == null) {
       _enterWaiting();
     }
   }
 
   void _drainQueue() {
-    if (!mounted) {
+    if (!mounted || widget.paused) {
       return;
     }
     if (_pendingIds.isEmpty) {
@@ -3164,10 +3358,54 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
       _drainQueue();
       return;
     }
+    _startRevealTimer(delay);
+  }
+
+  void _startRevealTimer(Duration delay) {
+    _revealTimer?.cancel();
+    _revealTimerStartedAt = DateTime.now();
+    _revealTimerDelay = delay;
+    _pausedRevealDelay = null;
     _revealTimer = Timer(delay, () {
       _revealTimer = null;
+      _revealTimerStartedAt = null;
+      _revealTimerDelay = null;
       _drainQueue();
     });
+  }
+
+  void _pauseRevealTimer() {
+    final Timer? timer = _revealTimer;
+    if (timer == null) {
+      return;
+    }
+    timer.cancel();
+    _revealTimer = null;
+    final DateTime? startedAt = _revealTimerStartedAt;
+    final Duration? delay = _revealTimerDelay;
+    if (startedAt == null || delay == null) {
+      _pausedRevealDelay = Duration.zero;
+      return;
+    }
+    final Duration elapsed = DateTime.now().difference(startedAt);
+    final Duration remaining = delay - elapsed;
+    _pausedRevealDelay = remaining <= Duration.zero ? Duration.zero : remaining;
+    _revealTimerStartedAt = null;
+    _revealTimerDelay = null;
+  }
+
+  void _resumeRevealTimer() {
+    final Duration? remaining = _pausedRevealDelay;
+    _pausedRevealDelay = null;
+    if (remaining != null && _pendingIds.isNotEmpty) {
+      if (remaining <= Duration.zero) {
+        _drainQueue();
+      } else {
+        _startRevealTimer(remaining);
+      }
+      return;
+    }
+    _syncSchedule();
   }
 
   MarkdownRenderNode? _nodeForId(String id) {
@@ -3313,6 +3551,7 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
             return _RevealScheduleScope(
               revealedAt: _revealedAt[id],
               tokenArrivalDelay: widget.tokenArrivalDelay,
+              paused: widget.paused,
               child: widget.blockBuilder(context, node),
             );
           },
@@ -3328,6 +3567,7 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
           revealedAt:
               _revealedAt[widget.blockIdentityBuilder(visibleBlocks[i])],
           tokenArrivalDelay: widget.tokenArrivalDelay,
+          paused: widget.paused,
           child: widget.blockBuilder(context, visibleBlocks[i]),
         ),
         if (i < visibleBlocks.length - 1) SizedBox(height: widget.blockSpacing),
@@ -3368,10 +3608,12 @@ class _RevealScheduleScope extends InheritedWidget {
     required super.child,
     required this.revealedAt,
     required this.tokenArrivalDelay,
+    required this.paused,
   });
 
   final DateTime? revealedAt;
   final Duration tokenArrivalDelay;
+  final bool paused;
 
   static _RevealScheduleScope? maybeOf(BuildContext context) {
     return context.dependOnInheritedWidgetOfExactType<_RevealScheduleScope>();
@@ -3380,7 +3622,8 @@ class _RevealScheduleScope extends InheritedWidget {
   @override
   bool updateShouldNotify(_RevealScheduleScope oldWidget) {
     return oldWidget.revealedAt != revealedAt ||
-        oldWidget.tokenArrivalDelay != tokenArrivalDelay;
+        oldWidget.tokenArrivalDelay != tokenArrivalDelay ||
+        oldWidget.paused != paused;
   }
 }
 
@@ -3435,11 +3678,15 @@ class _TokenLayoutGate extends StatefulWidget {
 class _TokenLayoutGateState extends State<_TokenLayoutGate> {
   bool _visible = false;
   Timer? _timer;
+  DateTime? _timerStartedAt;
+  Duration? _timerDelay;
+  Duration? _pausedDelay;
+  bool _paused = false;
+  bool _configured = false;
 
   @override
   void initState() {
     super.initState();
-    _configure();
   }
 
   @override
@@ -3452,6 +3699,27 @@ class _TokenLayoutGateState extends State<_TokenLayoutGate> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bool paused = _RevealScheduleScope.maybeOf(context)?.paused ?? false;
+    if (!_configured) {
+      _paused = paused;
+      _configured = true;
+      _configure();
+      return;
+    }
+    if (_paused == paused) {
+      return;
+    }
+    _paused = paused;
+    if (_paused) {
+      _pauseTimer();
+    } else {
+      _resumeTimer();
+    }
+  }
+
+  @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
@@ -3460,6 +3728,9 @@ class _TokenLayoutGateState extends State<_TokenLayoutGate> {
   void _configure() {
     _timer?.cancel();
     _timer = null;
+    _timerStartedAt = null;
+    _timerDelay = null;
+    _pausedDelay = null;
 
     final DateTime now = DateTime.now();
     final Duration sanitizedDelay = widget.initialDelay <= Duration.zero
@@ -3469,19 +3740,76 @@ class _TokenLayoutGateState extends State<_TokenLayoutGate> {
         widget.scheduledStart ?? now.add(sanitizedDelay);
 
     if (!now.isBefore(scheduledStart)) {
+      if (_paused) {
+        _visible = false;
+        _pausedDelay = Duration.zero;
+        return;
+      }
       _visible = true;
       return;
     }
 
     _visible = false;
-    _timer = Timer(scheduledStart.difference(now), () {
+    final Duration delay = scheduledStart.difference(now);
+    if (_paused) {
+      _pausedDelay = delay;
+      return;
+    }
+    _startTimer(delay);
+  }
+
+  void _startTimer(Duration delay) {
+    _timerStartedAt = DateTime.now();
+    _timerDelay = delay;
+    _timer = Timer(delay, () {
       if (!mounted) {
         return;
       }
+      _timer = null;
+      _timerStartedAt = null;
+      _timerDelay = null;
       setState(() {
         _visible = true;
       });
     });
+  }
+
+  void _pauseTimer() {
+    final Timer? timer = _timer;
+    if (timer == null || _visible) {
+      return;
+    }
+    timer.cancel();
+    _timer = null;
+    final DateTime? startedAt = _timerStartedAt;
+    final Duration? delay = _timerDelay;
+    if (startedAt == null || delay == null) {
+      _pausedDelay = Duration.zero;
+      return;
+    }
+    final Duration remaining = delay - DateTime.now().difference(startedAt);
+    _pausedDelay = remaining <= Duration.zero ? Duration.zero : remaining;
+    _timerStartedAt = null;
+    _timerDelay = null;
+  }
+
+  void _resumeTimer() {
+    if (_visible) {
+      return;
+    }
+    final Duration? delay = _pausedDelay;
+    _pausedDelay = null;
+    if (delay == null) {
+      _configure();
+      return;
+    }
+    if (delay <= Duration.zero) {
+      setState(() {
+        _visible = true;
+      });
+      return;
+    }
+    _startTimer(delay);
   }
 
   @override
@@ -3586,12 +3914,17 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
   bool _animationCompleted = false;
   Duration _animationDuration = Duration.zero;
   double _beginOpacity = 0;
+  double _currentOpacity = 0;
   Timer? _timer;
+  DateTime? _timerStartedAt;
+  Duration? _timerDelay;
+  Duration? _pausedDelay;
+  bool _paused = false;
+  bool _configured = false;
 
   @override
   void initState() {
     super.initState();
-    _configureSchedule();
   }
 
   @override
@@ -3600,15 +3933,40 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
     super.dispose();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final bool paused = _RevealScheduleScope.maybeOf(context)?.paused ?? false;
+    if (!_configured) {
+      _paused = paused;
+      _configured = true;
+      _configureSchedule();
+      return;
+    }
+    if (_paused == paused) {
+      return;
+    }
+    _paused = paused;
+    if (_paused) {
+      _pause();
+    } else {
+      _resume();
+    }
+  }
+
   void _configureSchedule() {
     _timer?.cancel();
     _timer = null;
+    _timerStartedAt = null;
+    _timerDelay = null;
+    _pausedDelay = null;
 
     if (widget.duration <= Duration.zero) {
       _revealed = true;
       _animationCompleted = true;
       _animationDuration = Duration.zero;
       _beginOpacity = 1;
+      _currentOpacity = 1;
       return;
     }
 
@@ -3624,7 +3982,23 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
       _animationCompleted = false;
       _animationDuration = widget.duration;
       _beginOpacity = 0;
-      _timer = Timer(scheduledStart.difference(now), _startAnimationNow);
+      _currentOpacity = 0;
+      final Duration delay = scheduledStart.difference(now);
+      if (_paused) {
+        _pausedDelay = delay;
+      } else {
+        _startTimer(delay);
+      }
+      return;
+    }
+
+    if (_paused) {
+      _revealed = false;
+      _animationCompleted = false;
+      _animationDuration = widget.duration;
+      _beginOpacity = 0;
+      _currentOpacity = 0;
+      _pausedDelay = Duration.zero;
       return;
     }
 
@@ -3634,6 +4008,13 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
     _animationCompleted = false;
     _animationDuration = widget.duration;
     _beginOpacity = 0;
+    _currentOpacity = 0;
+  }
+
+  void _startTimer(Duration delay) {
+    _timerStartedAt = DateTime.now();
+    _timerDelay = delay;
+    _timer = Timer(delay, _startAnimationNow);
   }
 
   void _startAnimationNow() {
@@ -3645,7 +4026,60 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
       _animationCompleted = false;
       _animationDuration = widget.duration;
       _beginOpacity = 0;
+      _currentOpacity = 0;
     });
+  }
+
+  void _pause() {
+    final Timer? timer = _timer;
+    if (timer != null && !_revealed) {
+      timer.cancel();
+      _timer = null;
+      final DateTime? startedAt = _timerStartedAt;
+      final Duration? delay = _timerDelay;
+      if (startedAt == null || delay == null) {
+        _pausedDelay = Duration.zero;
+      } else {
+        final Duration remaining = delay - DateTime.now().difference(startedAt);
+        _pausedDelay = remaining <= Duration.zero ? Duration.zero : remaining;
+      }
+      _timerStartedAt = null;
+      _timerDelay = null;
+      return;
+    }
+
+    if (_revealed && !_animationCompleted) {
+      final double remainingFraction = (1 - _currentOpacity).clamp(0.0, 1.0);
+      final int remainingMicros =
+          (widget.duration.inMicroseconds * remainingFraction).round();
+      setState(() {
+        _beginOpacity = _currentOpacity;
+        _animationDuration = Duration(microseconds: remainingMicros);
+      });
+    }
+  }
+
+  void _resume() {
+    if (!_revealed) {
+      final Duration? delay = _pausedDelay;
+      _pausedDelay = null;
+      if (delay == null) {
+        _configureSchedule();
+        return;
+      }
+      if (delay <= Duration.zero) {
+        _startAnimationNow();
+      } else {
+        _startTimer(delay);
+      }
+      return;
+    }
+
+    if (!_animationCompleted) {
+      setState(() {
+        _beginOpacity = _currentOpacity;
+      });
+    }
   }
 
   @override
@@ -3658,6 +4092,9 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
     }
     if (_animationCompleted || _animationDuration <= Duration.zero) {
       return widget.child;
+    }
+    if (_paused) {
+      return _buildAnimatedChild(_currentOpacity, widget.child);
     }
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: _beginOpacity, end: 1),
@@ -3674,20 +4111,24 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
         widget.onFadeInEnd?.call();
       },
       builder: (BuildContext context, double opacity, Widget? child) {
-        final StreamingMarkdownTokenAnimationBuilder? builder =
-            widget.animationBuilder;
-        final Widget resolvedChild = child ?? widget.child;
-        if (builder == null) {
-          return Opacity(opacity: opacity, child: resolvedChild);
-        }
-        return builder(
-          context,
-          StreamingMarkdownAnimatedToken(
-            child: resolvedChild,
-            animation: AlwaysStoppedAnimation<double>(opacity),
-          ),
-        );
+        _currentOpacity = opacity;
+        return _buildAnimatedChild(opacity, child ?? widget.child);
       },
+    );
+  }
+
+  Widget _buildAnimatedChild(double opacity, Widget child) {
+    final StreamingMarkdownTokenAnimationBuilder? builder =
+        widget.animationBuilder;
+    if (builder == null) {
+      return Opacity(opacity: opacity, child: child);
+    }
+    return builder(
+      context,
+      StreamingMarkdownAnimatedToken(
+        child: child,
+        animation: AlwaysStoppedAnimation<double>(opacity),
+      ),
     );
   }
 }

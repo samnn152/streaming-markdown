@@ -940,6 +940,91 @@ class Greeter {
     expect(text.style?.decoration, isNot(TextDecoration.underline));
   });
 
+  testWidgets('setext headings hide delimiter lines from content and raw', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                'Setext heading level 1\n======================',
+                type: 'setext_heading',
+                content: 'Setext heading level 1\n======================',
+                endRow: 1,
+              ),
+              _renderNode(
+                'Setext heading level 2\n----------------------',
+                type: 'setext_heading',
+                content: '',
+                startByte: 45,
+                startRow: 3,
+                endRow: 4,
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+
+    final String renderedText = _richTextPlainTexts(tester).join('\n');
+    expect(renderedText, contains('Setext'));
+    expect(renderedText, contains('heading'));
+    expect(renderedText, contains('level'));
+    expect(renderedText, contains('1'));
+    expect(renderedText, contains('2'));
+    expect(renderedText, isNot(contains('=')));
+    expect(renderedText, isNot(contains('---')));
+  });
+
+  testWidgets('intraword underscores render literally', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('Open pub_dev package'),
+            ],
+            padding: EdgeInsets.zero,
+            allowUnclosedInlineDelimiters: true,
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+
+    final String renderedText = _richTextPlainTexts(tester).join('\n');
+    expect(renderedText, contains('pub_dev'));
+  });
+
+  testWidgets('underscore thematic breaks render as dividers only', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('Before'),
+              _renderNode('___', type: 'thematic_break', content: ''),
+              _renderNode('After', startByte: 10),
+            ],
+            padding: EdgeInsets.zero,
+            tokenFadeInDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.byType(Divider), findsOneWidget);
+    expect(_richTextPlainTexts(tester).join('\n'), isNot(contains('___')));
+  });
+
   testWidgets('unrevealed list items do not occupy layout', (
     WidgetTester tester,
   ) async {

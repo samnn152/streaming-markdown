@@ -44,7 +44,7 @@ class GeminiMarkdownDemoApp extends StatelessWidget {
     return BlocProvider<ChatBloc>(
       create: (_) => ChatBloc(
         streamAnswerUseCase: _buildUseCase(),
-        parserWorker: StreamingMarkdownParseWorker(),
+        parserWorker: MarkdownStreamParser(),
         rope: RopeString(),
       )..add(const ChatStarted()),
       child: MaterialApp(
@@ -162,7 +162,7 @@ class _DualChatShowcasePageState extends State<_DualChatShowcasePage> {
                                 markdownEnableSelection: true,
                                 embedInScaffold: false,
                                 showComposer: false,
-                                markdownTheme: const StreamingMarkdownThemeData(
+                                markdownTheme: const AnimatedMarkdownThemeData(
                                   blockSpacing: 14,
                                   paragraphTextStyle: TextStyle(
                                     color: Color(0xFF4A1134),

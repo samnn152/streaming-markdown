@@ -1,3 +1,12 @@
+## 0.3.0
+
+- Add clearer primary API names: `MarkdownStreamParser`, `AnimatedStreamingMarkdown`, `MarkdownBlock`, Flutter-style token animation timing, and typed parse operations.
+- Keep `0.2.x` parser and renderer names available for migration compatibility.
+- Refresh README usage and migration notes around the new API names.
+- Add package branding asset at `assets/branding/logo.svg`.
+- Add renderer-level token animation pause support.
+- Improve public Dartdoc coverage for parser results, render blocks, theme data, and renderer configuration.
+
 ## 0.2.2
 
 - Fix select-all Markdown copy so complex blocks keep source delimiters and blocks after footnotes are included.

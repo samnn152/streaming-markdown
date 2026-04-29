@@ -35,7 +35,7 @@ class ChatPage extends StatefulWidget {
     this.markdownTokenFadeInRelativeToDelay = 1,
     this.markdownTokenFadeInDuration,
     this.markdownEnableSelection = false,
-    this.markdownTheme = const StreamingMarkdownThemeData(),
+    this.markdownTheme = const AnimatedMarkdownThemeData(),
     this.markdownCustomBlockBuilder,
     this.markdownOnLinkTap,
     this.embedInScaffold = true,
@@ -51,8 +51,8 @@ class ChatPage extends StatefulWidget {
   final double markdownTokenFadeInRelativeToDelay;
   final Duration? markdownTokenFadeInDuration;
   final bool markdownEnableSelection;
-  final StreamingMarkdownThemeData markdownTheme;
-  final StreamingMarkdownBlockBuilder? markdownCustomBlockBuilder;
+  final AnimatedMarkdownThemeData markdownTheme;
+  final AnimatedMarkdownBlockBuilder? markdownCustomBlockBuilder;
   final ValueChanged<String>? markdownOnLinkTap;
   final bool embedInScaffold;
   final bool showComposer;
@@ -72,12 +72,11 @@ class _ChatPageState extends State<ChatPage> {
   final TextEditingController _questionController = TextEditingController();
   final ScrollController _tokenScrollController = ScrollController();
   final Queue<String> _pendingSegments = Queue<String>();
-  final StreamingMarkdownParseWorker _renderWorker =
-      StreamingMarkdownParseWorker();
+  final MarkdownStreamParser _renderWorker = MarkdownStreamParser();
   final RopeString _displayRope = RopeString();
 
   List<String> _displayedTokens = <String>[];
-  List<MarkdownRenderNode> _displayedAnswerNodes = <MarkdownRenderNode>[];
+  List<MarkdownBlock> _displayedAnswerNodes = <MarkdownBlock>[];
   String _sourceMarkdown = '';
   String _displayedMarkdown = '';
   int _sourceTokenCount = 0;
@@ -117,15 +116,12 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _bootstrapRenderWorker() async {
     try {
       await _renderWorker.start();
-      List<MarkdownRenderNode> nodes = <MarkdownRenderNode>[];
+      List<MarkdownBlock> nodes = <MarkdownBlock>[];
       if (!_displayRope.isEmpty) {
-        final StreamingMarkdownParseResult parseResult = await _renderWorker
-            .request(
-              op: 'set',
-              text: _displayRope.toString(),
-              includeNodes: true,
-            );
-        nodes = parseResult.renderNodes;
+        final MarkdownParseResult parseResult = await _renderWorker.replace(
+          _displayRope.toString(),
+        );
+        nodes = parseResult.blocks;
       }
 
       if (!mounted) {
@@ -261,12 +257,13 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _appendRenderedSegment(String segment) async {
     _displayRope.append(segment);
 
-    List<MarkdownRenderNode> nextNodes = _displayedAnswerNodes;
+    List<MarkdownBlock> nextNodes = _displayedAnswerNodes;
     if (_renderWorkerReady) {
       try {
-        final StreamingMarkdownParseResult parseResult = await _renderWorker
-            .request(op: 'append', text: segment, includeNodes: true);
-        nextNodes = parseResult.renderNodes;
+        final MarkdownParseResult parseResult = await _renderWorker.append(
+          segment,
+        );
+        nextNodes = parseResult.blocks;
       } catch (_) {
         nextNodes = _displayedAnswerNodes;
       }
@@ -303,7 +300,7 @@ class _ChatPageState extends State<ChatPage> {
     _displayedMarkdown = '';
     _displayedTokens = <String>[];
     _sourceTokenCount = 0;
-    _displayedAnswerNodes = <MarkdownRenderNode>[];
+    _displayedAnswerNodes = <MarkdownBlock>[];
     _forceCompleteRequested = false;
     _didNotifyRenderEnd = false;
 
@@ -312,7 +309,7 @@ class _ChatPageState extends State<ChatPage> {
     }
 
     if (_renderWorkerReady) {
-      unawaited(_renderWorker.request(op: 'set', text: '', includeNodes: true));
+      unawaited(_renderWorker.replace(''));
     }
   }
 
@@ -366,16 +363,16 @@ class _ChatPageState extends State<ChatPage> {
       builder: (BuildContext context, ChatState state) {
         final Widget answerArea;
         if (_displayedAnswerNodes.isNotEmpty) {
-          answerArea = StreamingMarkdownRenderView(
-            nodes: _displayedAnswerNodes,
-            allowUnclosedInlineDelimiters: true,
-            tokenArrivalDelay: widget.tokenRenderInterval,
-            tokenFadeInRelativeToDelay:
+          answerArea = AnimatedStreamingMarkdown(
+            blocks: _displayedAnswerNodes,
+            allowIncompleteInlineSyntax: true,
+            tokenStaggerDelay: widget.tokenRenderInterval,
+            tokenAnimationDurationFactor:
                 widget.markdownTokenFadeInRelativeToDelay,
-            tokenFadeInDuration: widget.markdownTokenFadeInDuration,
-            enableTextSelection: widget.markdownEnableSelection,
-            markdownTheme: widget.markdownTheme,
-            customBlockBuilder: widget.markdownCustomBlockBuilder,
+            tokenAnimationDuration: widget.markdownTokenFadeInDuration,
+            enableSelection: widget.markdownEnableSelection,
+            theme: widget.markdownTheme,
+            blockBuilder: widget.markdownCustomBlockBuilder,
             onLinkTap: widget.markdownOnLinkTap,
           );
         } else if (_displayedMarkdown.isNotEmpty) {

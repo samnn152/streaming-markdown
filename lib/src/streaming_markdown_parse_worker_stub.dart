@@ -2,7 +2,30 @@ import 'markdown_render_node.dart';
 import 'rope_markdown_parser.dart';
 import 'rope_string.dart';
 
-/// Result returned by [StreamingMarkdownParseWorker.request].
+/// Preferred result type name for parser operations.
+typedef MarkdownParseResult = StreamingMarkdownParseResult;
+
+/// Operation type for [StreamingMarkdownParseWorker.parse].
+enum MarkdownParseOperation {
+  /// Replace the current parser buffer with a complete markdown document.
+  replace,
+
+  /// Append a markdown chunk to the current parser buffer.
+  append,
+}
+
+extension _MarkdownParseOperationWire on MarkdownParseOperation {
+  String get wireName {
+    switch (this) {
+      case MarkdownParseOperation.append:
+        return 'append';
+      case MarkdownParseOperation.replace:
+        return 'set';
+    }
+  }
+}
+
+/// Result returned by [StreamingMarkdownParseWorker.parse].
 class StreamingMarkdownParseResult {
   const StreamingMarkdownParseResult({
     required this.basicBlockCount,
@@ -22,11 +45,13 @@ class StreamingMarkdownParseResult {
   final bool nativeAvailable;
   final String mode;
   final bool nodesIncluded;
+  bool get includesNodes => nodesIncluded;
   final Duration updateTime;
   final Duration statsTime;
   final Duration totalTime;
   final List<MarkdownRenderNode> visibleNodes;
   final List<MarkdownRenderNode> renderNodes;
+  List<MarkdownRenderNode> get blocks => renderNodes;
 }
 
 /// Web/non-FFI fallback parse worker.
@@ -38,6 +63,41 @@ class StreamingMarkdownParseWorker {
     _started = true;
   }
 
+  Future<StreamingMarkdownParseResult> parse({
+    required MarkdownParseOperation operation,
+    required String text,
+    bool includeNodes = true,
+  }) {
+    return request(
+      op: operation.wireName,
+      text: text,
+      includeNodes: includeNodes,
+    );
+  }
+
+  Future<StreamingMarkdownParseResult> replace(
+    String markdown, {
+    bool includeNodes = true,
+  }) {
+    return parse(
+      operation: MarkdownParseOperation.replace,
+      text: markdown,
+      includeNodes: includeNodes,
+    );
+  }
+
+  Future<StreamingMarkdownParseResult> append(
+    String chunk, {
+    bool includeNodes = true,
+  }) {
+    return parse(
+      operation: MarkdownParseOperation.append,
+      text: chunk,
+      includeNodes: includeNodes,
+    );
+  }
+
+  /// Prefer [parse], [replace], or [append] in new code.
   Future<StreamingMarkdownParseResult> request({
     required String op,
     required String text,
@@ -83,3 +143,6 @@ class StreamingMarkdownParseWorker {
     _started = false;
   }
 }
+
+/// Preferred parser name for streamed markdown sources.
+class MarkdownStreamParser extends StreamingMarkdownParseWorker {}

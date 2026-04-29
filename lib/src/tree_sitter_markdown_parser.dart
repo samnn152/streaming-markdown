@@ -10,24 +10,34 @@ import 'rope_string.dart';
 ///
 /// Produces full [MarkdownSyntaxNode] trees for block or inline grammars.
 class TreeSitterMarkdownParser {
+  /// Creates a tree-sitter Markdown parser facade.
+  ///
+  /// The underlying native parser is loaded lazily from the package dynamic
+  /// library when a parse method is called.
   const TreeSitterMarkdownParser();
 
-  /// Parses markdown using the block grammar.
+  /// Parses [markdown] using the tree-sitter Markdown block grammar.
+  ///
+  /// Use this when you need source ranges and syntax-node types instead of
+  /// normalized render blocks.
   MarkdownSyntaxNode parseBlocks(String markdown) {
     return _parse(markdown, _parseBlocksToJson);
   }
 
-  /// Parses markdown from [rope] using the block grammar.
+  /// Parses markdown from [rope] using the tree-sitter Markdown block grammar.
   MarkdownSyntaxNode parseBlocksFromRope(RopeString rope) {
     return parseBlocks(rope.toString());
   }
 
-  /// Parses markdown using the inline grammar.
+  /// Parses [markdown] using the tree-sitter Markdown inline grammar.
+  ///
+  /// This is mainly useful for diagnostics and parser tooling. Most rendering
+  /// use cases should parse complete block documents instead.
   MarkdownSyntaxNode parseInlines(String markdown) {
     return _parse(markdown, _parseInlinesToJson);
   }
 
-  /// Parses markdown from [rope] using the inline grammar.
+  /// Parses markdown from [rope] using the tree-sitter Markdown inline grammar.
   MarkdownSyntaxNode parseInlinesFromRope(RopeString rope) {
     return parseInlines(rope.toString());
   }

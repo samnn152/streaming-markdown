@@ -1,11 +1,15 @@
 import 'dart:ffi';
 import 'dart:io';
 
+/// Native dynamic library basename used by this package.
 const String streamingMarkdownLibraryName = 'animated_streaming_markdown';
 
 DynamicLibrary? _cachedLibrary;
 Object? _libraryLoadError;
 
+/// Loaded native dynamic library for the current platform.
+///
+/// Throws when the package native library cannot be resolved.
 DynamicLibrary get streamingMarkdownDylib {
   final DynamicLibrary? library = _cachedLibrary;
   if (library != null) {
@@ -25,6 +29,7 @@ DynamicLibrary get streamingMarkdownDylib {
   }
 }
 
+/// Whether the native library can be loaded on the current platform.
 bool get isStreamingMarkdownNativeLibraryAvailable {
   try {
     streamingMarkdownDylib;
@@ -72,12 +77,14 @@ DynamicLibrary _openFirstAvailable(List<String> candidates) {
 
 typedef _NativeGetMarkdownLanguage = Pointer<Void> Function();
 
+/// Returns the native tree-sitter Markdown language pointer.
 final Pointer<Void> Function() getMarkdownLanguageNative =
     streamingMarkdownDylib
         .lookupFunction<_NativeGetMarkdownLanguage, Pointer<Void> Function()>(
   'streaming_markdown_tree_sitter_markdown',
 );
 
+/// Returns the native tree-sitter Markdown inline language pointer.
 final Pointer<Void> Function() getMarkdownInlineLanguageNative =
     streamingMarkdownDylib
         .lookupFunction<_NativeGetMarkdownLanguage, Pointer<Void> Function()>(

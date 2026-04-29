@@ -4,6 +4,7 @@ import 'dart:ui';
 
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show ScrollDirection;
 
 void main() {
   runApp(const MarkdownCasesDemoApp());
@@ -47,13 +48,14 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
   static const int _streamChunkLength = 28;
   static const Duration _streamChunkDelay = Duration(milliseconds: 110);
 
-  final StreamingMarkdownParseWorker _worker = StreamingMarkdownParseWorker();
+  final MarkdownStreamParser _worker = MarkdownStreamParser();
 
-  List<MarkdownRenderNode> _nodes = const <MarkdownRenderNode>[];
-  StreamingMarkdownParseResult? _result;
+  List<MarkdownBlock> _nodes = const <MarkdownBlock>[];
+  MarkdownParseResult? _result;
   int _selectedCase = -1;
   bool _workerStarted = false;
   bool _loading = true;
+  bool _renderPaused = false;
   bool _showSource = false;
   bool _debugTokens = false;
   int _selectedTokenAnimation = 0;
@@ -106,11 +108,12 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
 
     setState(() {
       _loading = true;
+      _renderPaused = false;
       _error = null;
       _streamedCharacters = streamMarkdown ? 0 : markdown.length;
       _totalCharacters = markdown.length;
       if (streamMarkdown) {
-        _nodes = const <MarkdownRenderNode>[];
+        _nodes = const <MarkdownBlock>[];
         _result = null;
       }
     });
@@ -122,7 +125,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
           if (!mounted || generation != _renderGeneration) {
             return;
           }
-          final StreamingMarkdownParseResult result = await _requestParse(
+          final MarkdownParseResult result = await _requestParse(
             'append',
             chunk,
           );
@@ -130,7 +133,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
             return;
           }
           setState(() {
-            _nodes = result.renderNodes;
+            _nodes = result.blocks;
             _result = result;
             _streamedCharacters += chunk.length;
           });
@@ -146,15 +149,12 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
         return;
       }
 
-      final StreamingMarkdownParseResult result = await _requestParse(
-        'set',
-        markdown,
-      );
+      final MarkdownParseResult result = await _requestParse('set', markdown);
       if (!mounted || generation != _renderGeneration) {
         return;
       }
       setState(() {
-        _nodes = result.renderNodes;
+        _nodes = result.blocks;
         _result = result;
         _loading = false;
         _streamedCharacters = markdown.length;
@@ -170,8 +170,8 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
     }
   }
 
-  Future<StreamingMarkdownParseResult> _requestParse(String op, String text) {
-    return _worker.request(op: op, text: text, includeNodes: true);
+  Future<MarkdownParseResult> _requestParse(String op, String text) {
+    return op == 'append' ? _worker.append(text) : _worker.replace(text);
   }
 
   Iterable<String> _chunkMarkdown(String markdown) sync* {
@@ -248,6 +248,12 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
     unawaited(_renderActiveMarkdown());
   }
 
+  void _toggleRenderPaused() {
+    setState(() {
+      _renderPaused = !_renderPaused;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -260,6 +266,15 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
             onPressed: _loading
                 ? null
                 : () => unawaited(_renderActiveMarkdown()),
+          ),
+          IconButton(
+            tooltip: _renderPaused ? 'Resume render' : 'Pause render',
+            icon: Icon(
+              _renderPaused
+                  ? Icons.play_circle_outline
+                  : Icons.pause_circle_outline,
+            ),
+            onPressed: _nodes.isEmpty ? null : _toggleRenderPaused,
           ),
           IconButton(
             tooltip: _showSource ? 'Hide source' : 'Show source',
@@ -310,6 +325,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
               result: _result,
               error: _error,
               loading: _loading,
+              renderPaused: _renderPaused,
               streamedCharacters: _streamedCharacters,
               totalCharacters: _totalCharacters,
               showSource: _showSource,
@@ -436,6 +452,7 @@ class _Workspace extends StatelessWidget {
     required this.result,
     required this.error,
     required this.loading,
+    required this.renderPaused,
     required this.streamedCharacters,
     required this.totalCharacters,
     required this.showSource,
@@ -445,11 +462,12 @@ class _Workspace extends StatelessWidget {
     required this.onLinkTap,
   });
 
-  final List<MarkdownRenderNode> nodes;
+  final List<MarkdownBlock> nodes;
   final String source;
-  final StreamingMarkdownParseResult? result;
+  final MarkdownParseResult? result;
   final String? error;
   final bool loading;
+  final bool renderPaused;
   final int streamedCharacters;
   final int totalCharacters;
   final bool showSource;
@@ -466,6 +484,7 @@ class _Workspace extends StatelessWidget {
       result: result,
       error: error,
       loading: loading,
+      renderPaused: renderPaused,
       streamedCharacters: streamedCharacters,
       totalCharacters: totalCharacters,
       debugTokens: debugTokens,
@@ -505,6 +524,7 @@ class _PreviewPane extends StatefulWidget {
     required this.result,
     required this.error,
     required this.loading,
+    required this.renderPaused,
     required this.streamedCharacters,
     required this.totalCharacters,
     required this.debugTokens,
@@ -513,10 +533,11 @@ class _PreviewPane extends StatefulWidget {
     required this.onLinkTap,
   });
 
-  final List<MarkdownRenderNode> nodes;
-  final StreamingMarkdownParseResult? result;
+  final List<MarkdownBlock> nodes;
+  final MarkdownParseResult? result;
   final String? error;
   final bool loading;
+  final bool renderPaused;
   final int streamedCharacters;
   final int totalCharacters;
   final bool debugTokens;
@@ -539,6 +560,7 @@ class _PreviewPaneState extends State<_PreviewPane> {
           result: widget.result,
           loading: widget.loading,
           error: widget.error,
+          renderPaused: widget.renderPaused,
           streamedCharacters: widget.streamedCharacters,
           totalCharacters: widget.totalCharacters,
           tokenAnimationName: widget.tokenAnimationName,
@@ -548,11 +570,12 @@ class _PreviewPaneState extends State<_PreviewPane> {
               ? _PreviewComparison(
                   nodes: widget.nodes,
                   loading: widget.loading,
+                  renderPaused: widget.renderPaused,
                   streamedCharacters: widget.streamedCharacters,
                   debugTokens: widget.debugTokens,
                   tokenAnimationBuilder: widget.tokenAnimationBuilder,
                   onLinkTap: widget.onLinkTap,
-                  markdownTheme: StreamingMarkdownThemeData(
+                  markdownTheme: AnimatedMarkdownThemeData(
                     blockSpacing: 16,
                     quoteBackgroundColor: const Color(0x111F7A68),
                     codeBlockBackgroundColor: const Color(0xFF0F172A),
@@ -593,6 +616,7 @@ class _PreviewComparison extends StatelessWidget {
   const _PreviewComparison({
     required this.nodes,
     required this.loading,
+    required this.renderPaused,
     required this.streamedCharacters,
     required this.debugTokens,
     required this.tokenAnimationBuilder,
@@ -600,8 +624,9 @@ class _PreviewComparison extends StatelessWidget {
     required this.markdownTheme,
   });
 
-  final List<MarkdownRenderNode> nodes;
+  final List<MarkdownBlock> nodes;
   final bool loading;
+  final bool renderPaused;
   final int streamedCharacters;
   final bool debugTokens;
   final StreamingMarkdownTokenAnimationBuilder tokenAnimationBuilder;
@@ -617,6 +642,7 @@ class _PreviewComparison extends StatelessWidget {
           title: 'Selection off',
           nodes: nodes,
           loading: loading,
+          renderPaused: renderPaused,
           streamedCharacters: streamedCharacters,
           enableSelection: false,
           debugTokens: debugTokens,
@@ -628,6 +654,7 @@ class _PreviewComparison extends StatelessWidget {
           title: 'Selection on',
           nodes: nodes,
           loading: loading,
+          renderPaused: renderPaused,
           streamedCharacters: streamedCharacters,
           enableSelection: true,
           debugTokens: debugTokens,
@@ -663,6 +690,7 @@ class _MarkdownPreviewSurface extends StatefulWidget {
     required this.title,
     required this.nodes,
     required this.loading,
+    required this.renderPaused,
     required this.streamedCharacters,
     required this.enableSelection,
     required this.debugTokens,
@@ -672,8 +700,9 @@ class _MarkdownPreviewSurface extends StatefulWidget {
   });
 
   final String title;
-  final List<MarkdownRenderNode> nodes;
+  final List<MarkdownBlock> nodes;
   final bool loading;
+  final bool renderPaused;
   final int streamedCharacters;
   final bool enableSelection;
   final bool debugTokens;
@@ -772,8 +801,20 @@ class _MarkdownPreviewSurfaceState extends State<_MarkdownPreviewSurface> {
   }
 
   bool _handleScrollNotification(ScrollNotification notification) {
-    if (notification is UserScrollNotification ||
-        notification is ScrollEndNotification) {
+    if (notification is UserScrollNotification &&
+        notification.direction != ScrollDirection.idle) {
+      _stickToBottom = false;
+      return false;
+    }
+
+    if (notification is ScrollUpdateNotification &&
+        notification.dragDetails != null &&
+        !_isNearBottom(notification.metrics)) {
+      _stickToBottom = false;
+      return false;
+    }
+
+    if (notification is ScrollEndNotification) {
       _stickToBottom = _isNearBottom(notification.metrics);
     }
     return false;
@@ -785,7 +826,7 @@ class _MarkdownPreviewSurfaceState extends State<_MarkdownPreviewSurface> {
     }
 
     int tokenCount = 0;
-    for (final MarkdownRenderNode node in widget.nodes) {
+    for (final MarkdownBlock node in widget.nodes) {
       final String text =
           (node.content.trim().isNotEmpty ? node.content : node.raw).trim();
       if (text.isEmpty) {
@@ -838,26 +879,27 @@ class _MarkdownPreviewSurfaceState extends State<_MarkdownPreviewSurface> {
                       alignment: Alignment.bottomLeft,
                       child: SizedBox(
                         width: double.infinity,
-                        child: StreamingMarkdownRenderView(
-                          nodes: widget.nodes,
-                          emptyPlaceholder: '',
-                          sliver: false,
+                        child: AnimatedStreamingMarkdown(
+                          blocks: widget.nodes,
+                          placeholder: '',
+                          asSliver: false,
                           padding: const EdgeInsets.all(20),
-                          enableTextSelection: widget.enableSelection,
-                          tokenArrivalDelay: _tokenArrivalDelay,
-                          tokenFadeInDuration: _tokenFadeInDuration,
+                          enableSelection: widget.enableSelection,
+                          tokenStaggerDelay: _tokenArrivalDelay,
+                          tokenAnimationDuration: _tokenFadeInDuration,
                           tokenAnimationBuilder: widget.tokenAnimationBuilder,
-                          debugTokenHighlight: widget.debugTokens,
-                          allowUnclosedInlineDelimiters: true,
-                          onTokenArrivalWait: () => _startAutoScroll(
+                          tokenAnimationPaused: widget.renderPaused,
+                          showTokenDebugColors: widget.debugTokens,
+                          allowIncompleteInlineSyntax: true,
+                          onTokenDelay: () => _startAutoScroll(
                             activeFor:
                                 _tokenFadeInDuration + _tokenArrivalDelay,
                           ),
-                          onTokenFadeInEnd: () => _startAutoScroll(
+                          onTokenAnimationEnd: () => _startAutoScroll(
                             activeFor: const Duration(milliseconds: 320),
                           ),
                           onLinkTap: widget.onLinkTap,
-                          markdownTheme: widget.markdownTheme,
+                          theme: widget.markdownTheme,
                         ),
                       ),
                     ),
@@ -876,14 +918,16 @@ class _ParserStatusBar extends StatelessWidget {
   const _ParserStatusBar({
     required this.result,
     required this.loading,
+    required this.renderPaused,
     required this.error,
     required this.streamedCharacters,
     required this.totalCharacters,
     required this.tokenAnimationName,
   });
 
-  final StreamingMarkdownParseResult? result;
+  final MarkdownParseResult? result;
   final bool loading;
+  final bool renderPaused;
   final String? error;
   final int streamedCharacters;
   final int totalCharacters;
@@ -892,22 +936,27 @@ class _ParserStatusBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ColorScheme colors = Theme.of(context).colorScheme;
-    final StreamingMarkdownParseResult? currentResult = result;
+    final MarkdownParseResult? currentResult = result;
     final bool hasProgress = totalCharacters > 0;
     final int progressPercent = hasProgress
         ? ((streamedCharacters / totalCharacters) * 100).clamp(0, 100).round()
         : 0;
     final String statusText = error != null
         ? 'Parser error'
+        : renderPaused
+        ? currentResult == null
+              ? 'Paused'
+              : 'Paused $progressPercent% - ${currentResult.mode} - '
+                    '${currentResult.blocks.length} render nodes'
         : loading
         ? currentResult == null
               ? 'Streaming markdown'
               : 'Streaming $progressPercent% - ${currentResult.mode} - '
-                    '${currentResult.renderNodes.length} render nodes'
+                    '${currentResult.blocks.length} render nodes'
         : currentResult == null
         ? 'Waiting'
         : '${currentResult.mode} - '
-              '${currentResult.renderNodes.length} render nodes - '
+              '${currentResult.blocks.length} render nodes - '
               '${currentResult.totalTime.inMilliseconds} ms';
 
     return Container(
@@ -918,7 +967,9 @@ class _ParserStatusBar extends StatelessWidget {
       color: colors.surfaceContainerHighest,
       child: Row(
         children: [
-          if (loading)
+          if (renderPaused)
+            Icon(Icons.pause_circle_outline, size: 18, color: colors.primary)
+          else if (loading)
             const SizedBox(
               width: 16,
               height: 16,

@@ -734,6 +734,9 @@ mixin _StreamingMarkdownTextParsing {
     if (!text.startsWith(delimiter, start)) {
       return null;
     }
+    if (!_canOpenDelimiter(text, start, delimiter)) {
+      return null;
+    }
     final int endStart = text.indexOf(delimiter, start + delimiter.length);
     if (endStart == -1) {
       if (!allowUnclosedTail) {
@@ -750,6 +753,26 @@ mixin _StreamingMarkdownTextParsing {
       return null;
     }
     return _DelimitedMatch(inner: inner, end: endStart + delimiter.length);
+  }
+
+  bool _canOpenDelimiter(String text, int start, String delimiter) {
+    if (!delimiter.startsWith('_')) {
+      return true;
+    }
+    final int previousIndex = start - 1;
+    final int nextIndex = start + delimiter.length;
+    if (previousIndex < 0 || nextIndex >= text.length) {
+      return true;
+    }
+    final int previous = text.codeUnitAt(previousIndex);
+    final int next = text.codeUnitAt(nextIndex);
+    return !_isAsciiAlphanumeric(previous) || !_isAsciiAlphanumeric(next);
+  }
+
+  bool _isAsciiAlphanumeric(int codeUnit) {
+    return (codeUnit >= 48 && codeUnit <= 57) ||
+        (codeUnit >= 65 && codeUnit <= 90) ||
+        (codeUnit >= 97 && codeUnit <= 122);
   }
 
   _InlineImageMatch? _matchInlineImageAt(String text, int start) {
@@ -913,11 +936,13 @@ mixin _StreamingMarkdownTextParsing {
   }
 
   String _headingText(MarkdownRenderNode node) {
-    if (node.content.trim().isNotEmpty) {
-      return node.content.trim();
+    final String source = node.content.trim().isNotEmpty
+        ? node.content.trim()
+        : _normalizedRaw(node.raw).trim();
+    if (node.type == 'setext_heading') {
+      return _stripSetextDelimiter(source);
     }
-    final String raw = _normalizedRaw(node.raw);
-    return raw.replaceFirst(RegExp(r'^\s{0,3}#{1,6}\s*'), '').trim();
+    return source.replaceFirst(RegExp(r'^\s{0,3}#{1,6}\s*'), '').trim();
   }
 
   int _headingLevelForNode(MarkdownRenderNode node) {
@@ -933,7 +958,7 @@ mixin _StreamingMarkdownTextParsing {
 
     if (node.type == 'setext_heading') {
       final List<String> lines = _normalizedRaw(node.raw).split('\n');
-      if (lines.length >= 2 && RegExp(r'^\s*=+\s*$').hasMatch(lines[1])) {
+      if (lines.length >= 2 && RegExp(r'^\s*=+\s*$').hasMatch(lines.last)) {
         return 1;
       }
       return 2;
@@ -952,6 +977,18 @@ mixin _StreamingMarkdownTextParsing {
 
   String _normalizedRaw(String raw) {
     return raw.replaceAll('\r', '').trimRight();
+  }
+
+  String _stripSetextDelimiter(String text) {
+    final List<String> lines = _normalizedRaw(text).split('\n');
+    if (lines.length < 2 || !_isSetextDelimiterLine(lines.last)) {
+      return text.trim();
+    }
+    return lines.take(lines.length - 1).join('\n').trim();
+  }
+
+  bool _isSetextDelimiterLine(String line) {
+    return RegExp(r'^\s{0,3}(=+|-+)\s*$').hasMatch(line);
   }
 }
 
