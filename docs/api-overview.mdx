@@ -1,0 +1,109 @@
+---
+title: API Overview
+description: Public parser, renderer, animation, selection, and theming APIs.
+---
+
+# API Overview
+
+`animated_streaming_markdown` exposes parser APIs, render block models, and
+Flutter renderer widgets from one public library:
+
+```dart
+import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
+```
+
+## Parser
+
+`MarkdownStreamParser` turns Markdown text into renderable blocks.
+
+```dart
+final parser = MarkdownStreamParser();
+await parser.start();
+
+final result = await parser.parse(
+  operation: MarkdownParseOperation.append,
+  text: chunk,
+);
+```
+
+Prefer the convenience methods when the operation is static:
+
+```dart
+await parser.replace(markdown);
+await parser.append(chunk);
+```
+
+## Parse Result
+
+`MarkdownParseResult.blocks` is the primary output for rendering:
+
+```dart
+final List<MarkdownBlock> blocks = result.blocks;
+```
+
+The result also exposes diagnostics such as parser mode, native availability,
+block counts, inline type counts, and timing values.
+
+## Renderer
+
+`AnimatedStreamingMarkdown` renders parsed blocks:
+
+```dart
+AnimatedStreamingMarkdown(
+  blocks: result.blocks,
+  enableSelection: true,
+);
+```
+
+Important renderer options include:
+
+- `blocks`
+- `placeholder`
+- `asSliver`
+- `tokenStaggerDelay`
+- `tokenAnimationDuration`
+- `tokenAnimationDurationFactor`
+- `tokenAnimationCurve`
+- `tokenAnimationBuilder`
+- `onTokenDelay`
+- `onTokenAnimationEnd`
+- `enableSelection`
+- `theme`
+- `blockBuilder`
+
+## Theming
+
+Use `AnimatedMarkdownThemeData` to override renderer styling:
+
+```dart
+AnimatedStreamingMarkdown(
+  blocks: result.blocks,
+  theme: const AnimatedMarkdownThemeData(
+    blockSpacing: 16,
+    codeBlockBackgroundColor: Color(0xFF0F172A),
+  ),
+);
+```
+
+## Custom Blocks
+
+Use `blockBuilder` to replace or wrap a rendered block:
+
+```dart
+AnimatedStreamingMarkdown(
+  blocks: result.blocks,
+  blockBuilder: (context, block) {
+    if (block.block.type == 'thematic_break') {
+      return const Divider(thickness: 2);
+    }
+    return block.defaultWidget;
+  },
+);
+```
+
+Return `null` to use the default widget.
+
+## API Reference
+
+For constructor parameters, typedefs, and model details, use the generated
+[Dart API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/).

@@ -18,7 +18,7 @@
   <p align="center">
     Streaming Markdown parser + renderer for Flutter, optimized for incremental append flows.
     <br />
-    <a href="https://github.com/samnn152/streaming-markdown"><strong>Explore the docs »</strong></a>
+    <a href="https://samnn.dev"><strong>Explore the docs »</strong></a>
     <br />
     <br />
     <a href="https://github.com/samnn152/streaming-markdown/tree/main/example">View Demo</a>
@@ -87,7 +87,7 @@ It is designed for chat-like or streaming text interfaces where markdown arrives
 1. Add dependency:
    ```yaml
    dependencies:
-    animated_streaming_markdown: ^0.3.1
+    animated_streaming_markdown: ^0.3.2
    ```
 2. Install packages:
    ```sh
@@ -152,6 +152,7 @@ For a complete integration sample, check [`example/lib/src/demos/markdown_cases_
 
 ## Documentation
 
+- [Documentation site](https://samnn.dev)
 - [API overview](doc/api-overview.md)
 - [Migration guide: 0.2.x to 0.3.0](doc/migration-0.3.0.md)
 - [Generated Dart API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/)
@@ -186,6 +187,10 @@ the package behavior more directly:
 - Done: Streaming renderer for markdown block nodes
 - Done: Per-token custom animation builder API
 - Done: Example with multiple animation presets
+- Done: Docs.page-ready documentation content for `samnn.dev`
+- Planned: Convenience constructors and helper functions
+- Planned: Code block copy and LaTeX support research
+- Planned: Richer copy modes and improved multi-content drag selection
 - Planned: More parser/renderer benchmark scenarios
 
 See the [open issues][issues-url] for proposed features and known issues.
@@ -202,6 +207,9 @@ Contributions are welcome.
 4. Push branch (`git push origin feature/your-feature`)
 5. Open a Pull Request
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, repository layout, and
+quality gates.
+
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ## License
@@ -212,6 +220,7 @@ Distributed under the Apache-2.0 License. See [`LICENSE`](LICENSE) for details.
 
 ## Contact
 
+- Documentation: [https://samnn.dev](https://samnn.dev)
 - Repository: [https://github.com/samnn152/streaming-markdown](https://github.com/samnn152/streaming-markdown)
 - Issues: [https://github.com/samnn152/streaming-markdown/issues](https://github.com/samnn152/streaming-markdown/issues)
 

@@ -1,0 +1,51 @@
+---
+title: Overview
+description: Streaming Markdown parser and animated Flutter renderer.
+---
+
+# animated_streaming_markdown
+
+`animated_streaming_markdown` is a Flutter package for chat-like Markdown
+interfaces where text arrives progressively and the UI needs stable incremental
+updates.
+
+The package has two main layers:
+
+- `MarkdownStreamParser` converts full snapshots or appended chunks into typed
+  render blocks.
+- `AnimatedStreamingMarkdown` renders those blocks with token reveal animation,
+  link handling, and optional Markdown-aware selection copy.
+
+Use it when a model, server, or local process streams Markdown into a Flutter
+surface and you want to avoid reparsing and rebuilding the whole experience by
+hand.
+
+## Key Capabilities
+
+- Incremental `replace` and `append` parse operations.
+- Typed `MarkdownParseResult.blocks` output.
+- Flutter renderer for lists, tables, code blocks, HTML blocks, footnotes, and
+  common inline Markdown.
+- Per-token animation timing and custom token animation builders.
+- Optional Markdown-aware selection copy.
+- Native tree-sitter parser integration on Android, iOS, macOS, Linux, and
+  Windows.
+
+## Platform Support
+
+The package is built for Flutter native targets:
+
+- Android
+- iOS
+- macOS
+- Linux
+- Windows
+
+Web imports are guarded by stubs where possible, but web is not an officially
+supported rendering target.
+
+## Next Steps
+
+- Install the package from [Installation](/installation).
+- Render your first stream in [Quick Start](/quick-start).
+- Review the public surface in [API Overview](/api-overview).

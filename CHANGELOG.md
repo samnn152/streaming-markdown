@@ -1,3 +1,10 @@
+## 0.3.2
+
+- Add a Docs.page documentation site configuration and MDX documentation pages.
+- Point package homepage and documentation metadata at the published docs site.
+- Expand README links around installation, docs, migration, and contribution entry points.
+- Add a contributor guide for local setup, repository layout, quality gates, and release flow.
+
 ## 0.3.1
 
 - Reorganize parser, renderer, model, native, and worker internals into clearer layers for contributors.

@@ -1,0 +1,37 @@
+---
+title: Selection Copy
+description: Markdown-aware copy behavior for selected rendered content.
+---
+
+# Selection Copy
+
+Set `enableSelection` to wrap the renderer in a selection area:
+
+```dart
+AnimatedStreamingMarkdown(
+  blocks: result.blocks,
+  enableSelection: true,
+);
+```
+
+When possible, copied content preserves Markdown source semantics rather than
+only visual text.
+
+Supported copy behavior includes:
+
+- Paragraphs and headings.
+- Links as Markdown links.
+- Lists and task lists.
+- Block quotes.
+- Code fences.
+- Tables.
+- HTML blocks.
+- Footnote references and definitions.
+
+## Current Scope
+
+Selection copy is designed for normal rendered Markdown content. More advanced
+copy modes, image copy, and broader drag selection behavior are planned for the
+0.3.x line.
+
+See [Roadmap](/roadmap) for the current planning notes.

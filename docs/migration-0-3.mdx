@@ -1,0 +1,100 @@
+---
+title: Migration 0.2.x to 0.3.x
+description: Rename parser, renderer, result, and animation APIs to the 0.3.x names.
+---
+
+# Migration 0.2.x to 0.3.x
+
+`0.3.0` introduced clearer API names. The old `0.2.x` names remain available,
+so migration can be incremental.
+
+## Parser Type
+
+Before:
+
+```dart
+final worker = StreamingMarkdownParseWorker();
+```
+
+After:
+
+```dart
+final parser = MarkdownStreamParser();
+```
+
+## Parse Operations
+
+Before:
+
+```dart
+final result = await worker.request(
+  op: 'set',
+  text: markdown,
+  includeNodes: true,
+);
+```
+
+After:
+
+```dart
+final result = await parser.replace(markdown);
+```
+
+For appended chunks:
+
+```dart
+final result = await parser.append(chunk);
+```
+
+For dynamic operations:
+
+```dart
+final result = await parser.parse(
+  operation: MarkdownParseOperation.append,
+  text: chunk,
+);
+```
+
+## Renderer
+
+Before:
+
+```dart
+StreamingMarkdownRenderView(
+  nodes: result.renderNodes,
+);
+```
+
+After:
+
+```dart
+AnimatedStreamingMarkdown(
+  blocks: result.blocks,
+);
+```
+
+## Common Renames
+
+| 0.2.x | 0.3.x |
+| --- | --- |
+| `StreamingMarkdownParseWorker` | `MarkdownStreamParser` |
+| `StreamingMarkdownParseResult` | `MarkdownParseResult` |
+| `StreamingMarkdownParseResult.renderNodes` | `MarkdownParseResult.blocks` |
+| `MarkdownRenderNode` | `MarkdownBlock` |
+| `StreamingMarkdownRenderView` | `AnimatedStreamingMarkdown` |
+| `nodes` | `blocks` |
+| `emptyPlaceholder` | `placeholder` |
+| `sliver` | `asSliver` |
+| `allowUnclosedInlineDelimiters` | `allowIncompleteInlineSyntax` |
+| `tokenArrivalDelay` | `tokenStaggerDelay` |
+| `onTokenArrivalWait` | `onTokenDelay` |
+| `onTokenFadeInEnd` | `onTokenAnimationEnd` |
+| `tokenFadeInDuration` | `tokenAnimationDuration` |
+| `tokenFadeInRelativeToDelay` | `tokenAnimationDurationFactor` |
+| `tokenFadeInCurve` | `tokenAnimationCurve` |
+| `debugTokenHighlight` | `showTokenDebugColors` |
+| `enableTextSelection` | `enableSelection` |
+| `markdownTheme` | `theme` |
+| `customBlockBuilder` | `blockBuilder` |
+
+Prefer the new names for new code, documentation, and issue discussions.

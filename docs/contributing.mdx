@@ -1,0 +1,70 @@
+---
+title: Contributing
+description: Local setup, repository layout, and quality gates for contributors.
+---
+
+# Contributing
+
+Contributions are welcome. The fastest way to help is to open a focused issue
+or pull request with a clear reproduction, test case, or documentation
+improvement.
+
+## Local Setup
+
+Clone the repository:
+
+```sh
+git clone https://github.com/samnn152/streaming-markdown.git
+cd streaming-markdown
+```
+
+Install package dependencies:
+
+```sh
+flutter pub get
+```
+
+Install example dependencies when working on the demo app:
+
+```sh
+cd example
+flutter pub get
+```
+
+## Repository Layout
+
+- `lib/animated_streaming_markdown.dart`: public package entrypoint.
+- `lib/src/parser`: Markdown parser adapters.
+- `lib/src/worker`: isolate parser worker API.
+- `lib/src/model`: public and internal data models.
+- `lib/src/render`: Flutter renderer, animation, selection, text, and HTML code.
+- `lib/src/native`: native parser bindings and platform stubs.
+- `example`: Flutter example app and demo content.
+- `test`: renderer, selection, animation, and parser regression tests.
+- `docs`: Docs.page documentation site.
+- `doc`: package reference markdown used from README and migration links.
+
+## Quality Gates
+
+Run these before opening a pull request:
+
+```sh
+dart format .
+dart analyze
+flutter test
+```
+
+For release checks:
+
+```sh
+flutter pub publish --dry-run
+```
+
+## Pull Request Scope
+
+Keep pull requests focused. Parser changes, renderer behavior changes,
+selection copy changes, and docs changes are easier to review when they are not
+mixed together.
+
+Behavior changes should include tests. Visual renderer changes should include
+golden updates when they intentionally affect output.

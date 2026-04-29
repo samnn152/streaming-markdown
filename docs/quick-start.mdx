@@ -1,0 +1,76 @@
+---
+title: Quick Start
+description: Parse streamed Markdown and render it in Flutter.
+---
+
+# Quick Start
+
+Create and start one parser for each active Markdown stream:
+
+```dart
+final parser = MarkdownStreamParser();
+await parser.start();
+```
+
+Use `replace` when you receive a full document snapshot:
+
+```dart
+final result = await parser.replace('# Hello');
+```
+
+Use `append` when you receive only the next chunk:
+
+```dart
+final next = await parser.append('\n\nStreaming **markdown** chunk...');
+```
+
+Render the latest parsed blocks:
+
+```dart
+AnimatedStreamingMarkdown(
+  blocks: next.blocks,
+  tokenStaggerDelay: const Duration(milliseconds: 120),
+  tokenAnimationDuration: const Duration(milliseconds: 220),
+  enableSelection: true,
+);
+```
+
+Dispose the parser when the stream is finished:
+
+```dart
+parser.dispose();
+```
+
+## Sliver Layouts
+
+Set `asSliver` when the renderer is placed inside a `CustomScrollView`:
+
+```dart
+CustomScrollView(
+  slivers: [
+    AnimatedStreamingMarkdown(
+      blocks: result.blocks,
+      asSliver: true,
+    ),
+  ],
+);
+```
+
+## Custom Token Animation
+
+Use `tokenAnimationBuilder` to customize each token reveal:
+
+```dart
+AnimatedStreamingMarkdown(
+  blocks: result.blocks,
+  tokenStaggerDelay: const Duration(milliseconds: 80),
+  tokenAnimationDuration: const Duration(milliseconds: 240),
+  tokenAnimationBuilder: (context, token) {
+    final t = Curves.easeOutCubic.transform(token.value);
+    return Transform.translate(
+      offset: Offset(0, (1 - t) * 8),
+      child: Opacity(opacity: t, child: token.child),
+    );
+  },
+);
+```
