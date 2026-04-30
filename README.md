@@ -29,6 +29,12 @@
   </p>
 </div>
 
+<p align="center">
+  <a href="https://samnn.dev/build-a-demo">
+    <img src="assets/preview/all-supported-blocks.png" alt="animated_streaming_markdown rendered Markdown preview" width="720">
+  </a>
+</p>
+
 <details>
   <summary>Table of Contents</summary>
   <ol>
@@ -153,10 +159,28 @@ For a complete integration sample, check [`example/lib/src/demos/markdown_cases_
 ## Documentation
 
 - [Documentation site](https://samnn.dev)
+- [Build a complete demo](https://samnn.dev/build-a-demo)
 - [API overview](https://samnn.dev/api-overview)
 - [Migration guide: 0.2.x to 0.3.x](https://samnn.dev/migration-0-3)
-- [Build a complete demo](https://samnn.dev/build-a-demo)
 - [Generated Dart API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/)
+
+The documentation site is built with Docusaurus from [`docs/`](docs) and
+deployed to GitHub Pages by [`Deploy Documentation`](.github/workflows/docs-pages.yml).
+
+Run the docs site locally:
+
+```sh
+cd website
+npm ci
+npm run start
+```
+
+Build the static site:
+
+```sh
+cd website
+npm run build
+```
 
 ### Migration notes for 0.3.0
 
