@@ -153,8 +153,9 @@ For a complete integration sample, check [`example/lib/src/demos/markdown_cases_
 ## Documentation
 
 - [Documentation site](https://samnn.dev)
-- [API overview](doc/api-overview.md)
-- [Migration guide: 0.2.x to 0.3.0](doc/migration-0.3.0.md)
+- [API overview](https://samnn.dev/api-overview)
+- [Migration guide: 0.2.x to 0.3.x](https://samnn.dev/migration-0-3)
+- [Build a complete demo](https://samnn.dev/build-a-demo)
 - [Generated Dart API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/)
 
 ### Migration notes for 0.3.0
