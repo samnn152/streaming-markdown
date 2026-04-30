@@ -307,11 +307,8 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     if (tokenCompaction == AnimatedMarkdownTokenCompaction.disabled) {
       return false;
     }
-    if (debugTokenHighlight) {
-      return false;
-    }
     if (tokenCompaction == AnimatedMarkdownTokenCompaction.automatic &&
-        tokenAnimationBuilder != null) {
+        (debugTokenHighlight || tokenAnimationBuilder != null)) {
       return false;
     }
     return true;

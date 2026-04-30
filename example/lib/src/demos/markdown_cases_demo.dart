@@ -286,7 +286,9 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
             onPressed: _toggleSource,
           ),
           IconButton(
-            tooltip: _debugTokens ? 'Disable token colors' : 'Show tokens',
+            tooltip: _debugTokens
+                ? 'Hide token merge trace'
+                : 'Trace token merge',
             icon: Icon(
               _debugTokens
                   ? Icons.visibility_off_outlined
@@ -564,6 +566,7 @@ class _PreviewPaneState extends State<_PreviewPane> {
           streamedCharacters: widget.streamedCharacters,
           totalCharacters: widget.totalCharacters,
           tokenAnimationName: widget.tokenAnimationName,
+          tracingTokenMerge: widget.debugTokens,
         ),
         Expanded(
           child: widget.error == null
@@ -890,6 +893,9 @@ class _MarkdownPreviewSurfaceState extends State<_MarkdownPreviewSurface> {
                           tokenAnimationBuilder: widget.tokenAnimationBuilder,
                           tokenAnimationPaused: widget.renderPaused,
                           showTokenDebugColors: widget.debugTokens,
+                          tokenCompaction: widget.debugTokens
+                              ? AnimatedMarkdownTokenCompaction.always
+                              : AnimatedMarkdownTokenCompaction.automatic,
                           allowIncompleteInlineSyntax: true,
                           onTokenDelay: () => _startAutoScroll(
                             activeFor:
@@ -923,6 +929,7 @@ class _ParserStatusBar extends StatelessWidget {
     required this.streamedCharacters,
     required this.totalCharacters,
     required this.tokenAnimationName,
+    required this.tracingTokenMerge,
   });
 
   final MarkdownParseResult? result;
@@ -932,6 +939,7 @@ class _ParserStatusBar extends StatelessWidget {
   final int streamedCharacters;
   final int totalCharacters;
   final String tokenAnimationName;
+  final bool tracingTokenMerge;
 
   @override
   Widget build(BuildContext context) {
@@ -992,7 +1000,9 @@ class _ParserStatusBar extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            tokenAnimationName,
+            tracingTokenMerge
+                ? '$tokenAnimationName - merge trace'
+                : tokenAnimationName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
