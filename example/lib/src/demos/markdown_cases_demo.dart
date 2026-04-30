@@ -49,6 +49,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
   static const Duration _streamChunkDelay = Duration(milliseconds: 110);
 
   final MarkdownStreamParser _worker = MarkdownStreamParser();
+  final GlobalKey _workspaceKey = GlobalKey();
 
   List<MarkdownBlock> _nodes = const <MarkdownBlock>[];
   MarkdownParseResult? _result;
@@ -322,6 +323,7 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
               onSelected: _selectCase,
             );
             final Widget workspace = _Workspace(
+              key: _workspaceKey,
               nodes: _nodes,
               source: _visibleMarkdown,
               result: _result,
@@ -447,8 +449,9 @@ class _CaseList extends StatelessWidget {
   }
 }
 
-class _Workspace extends StatelessWidget {
+class _Workspace extends StatefulWidget {
   const _Workspace({
+    super.key,
     required this.nodes,
     required this.source,
     required this.result,
@@ -479,27 +482,40 @@ class _Workspace extends StatelessWidget {
   final ValueChanged<String> onLinkTap;
 
   @override
+  State<_Workspace> createState() => _WorkspaceState();
+}
+
+class _WorkspaceState extends State<_Workspace> {
+  final GlobalKey _previewKey = GlobalKey();
+  final GlobalKey _sourceKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
-    final bool split = showSource && MediaQuery.sizeOf(context).width >= 760;
+    final bool split =
+        widget.showSource && MediaQuery.sizeOf(context).width >= 760;
     final Widget preview = _PreviewPane(
-      nodes: nodes,
-      result: result,
-      error: error,
-      loading: loading,
-      renderPaused: renderPaused,
-      streamedCharacters: streamedCharacters,
-      totalCharacters: totalCharacters,
-      debugTokens: debugTokens,
-      tokenAnimationBuilder: tokenAnimationBuilder,
-      tokenAnimationName: tokenAnimationName,
-      onLinkTap: onLinkTap,
+      key: _previewKey,
+      nodes: widget.nodes,
+      result: widget.result,
+      error: widget.error,
+      loading: widget.loading,
+      renderPaused: widget.renderPaused,
+      streamedCharacters: widget.streamedCharacters,
+      totalCharacters: widget.totalCharacters,
+      debugTokens: widget.debugTokens,
+      tokenAnimationBuilder: widget.tokenAnimationBuilder,
+      tokenAnimationName: widget.tokenAnimationName,
+      onLinkTap: widget.onLinkTap,
     );
 
-    if (!showSource) {
+    if (!widget.showSource) {
       return preview;
     }
 
-    final Widget sourcePane = _SourcePane(source: source);
+    final Widget sourcePane = _SourcePane(
+      key: _sourceKey,
+      source: widget.source,
+    );
     if (split) {
       return Row(
         children: [
@@ -522,6 +538,7 @@ class _Workspace extends StatelessWidget {
 
 class _PreviewPane extends StatefulWidget {
   const _PreviewPane({
+    super.key,
     required this.nodes,
     required this.result,
     required this.error,
@@ -615,7 +632,7 @@ class _PreviewPaneState extends State<_PreviewPane> {
   }
 }
 
-class _PreviewComparison extends StatelessWidget {
+class _PreviewComparison extends StatefulWidget {
   const _PreviewComparison({
     required this.nodes,
     required this.loading,
@@ -637,33 +654,43 @@ class _PreviewComparison extends StatelessWidget {
   final StreamingMarkdownThemeData markdownTheme;
 
   @override
+  State<_PreviewComparison> createState() => _PreviewComparisonState();
+}
+
+class _PreviewComparisonState extends State<_PreviewComparison> {
+  final GlobalKey _selectionOffKey = GlobalKey();
+  final GlobalKey _selectionOnKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         final bool sideBySide = constraints.maxWidth >= 560;
         final Widget selectionOff = _MarkdownPreviewSurface(
+          key: _selectionOffKey,
           title: 'Selection off',
-          nodes: nodes,
-          loading: loading,
-          renderPaused: renderPaused,
-          streamedCharacters: streamedCharacters,
+          nodes: widget.nodes,
+          loading: widget.loading,
+          renderPaused: widget.renderPaused,
+          streamedCharacters: widget.streamedCharacters,
           enableSelection: false,
-          debugTokens: debugTokens,
-          tokenAnimationBuilder: tokenAnimationBuilder,
-          onLinkTap: onLinkTap,
-          markdownTheme: markdownTheme,
+          debugTokens: widget.debugTokens,
+          tokenAnimationBuilder: widget.tokenAnimationBuilder,
+          onLinkTap: widget.onLinkTap,
+          markdownTheme: widget.markdownTheme,
         );
         final Widget selectionOn = _MarkdownPreviewSurface(
+          key: _selectionOnKey,
           title: 'Selection on',
-          nodes: nodes,
-          loading: loading,
-          renderPaused: renderPaused,
-          streamedCharacters: streamedCharacters,
+          nodes: widget.nodes,
+          loading: widget.loading,
+          renderPaused: widget.renderPaused,
+          streamedCharacters: widget.streamedCharacters,
           enableSelection: true,
-          debugTokens: debugTokens,
-          tokenAnimationBuilder: tokenAnimationBuilder,
-          onLinkTap: onLinkTap,
-          markdownTheme: markdownTheme,
+          debugTokens: widget.debugTokens,
+          tokenAnimationBuilder: widget.tokenAnimationBuilder,
+          onLinkTap: widget.onLinkTap,
+          markdownTheme: widget.markdownTheme,
         );
 
         if (sideBySide) {
@@ -690,6 +717,7 @@ class _PreviewComparison extends StatelessWidget {
 
 class _MarkdownPreviewSurface extends StatefulWidget {
   const _MarkdownPreviewSurface({
+    super.key,
     required this.title,
     required this.nodes,
     required this.loading,
@@ -1017,7 +1045,7 @@ class _ParserStatusBar extends StatelessWidget {
 }
 
 class _SourcePane extends StatefulWidget {
-  const _SourcePane({required this.source});
+  const _SourcePane({super.key, required this.source});
 
   final String source;
 
