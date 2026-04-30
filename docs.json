@@ -47,6 +47,10 @@
         {
           "title": "Quick Start",
           "href": "/quick-start"
+        },
+        {
+          "title": "Build a Demo",
+          "href": "/build-a-demo"
         }
       ]
     },

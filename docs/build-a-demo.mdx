@@ -1,0 +1,299 @@
+---
+title: Build a Streaming Markdown Demo
+description: Create a complete Flutter demo with parser lifecycle, streaming chunks, animated rendering, and selection copy.
+---
+
+# Build a Streaming Markdown Demo
+
+This guide builds a small Flutter screen that simulates a streaming Markdown
+answer. It covers the pieces most apps need:
+
+- starting and disposing a parser
+- appending streamed chunks
+- rendering parsed blocks
+- animating token reveal
+- enabling Markdown-aware selection copy
+- resetting the stream
+
+## 1. Create a Flutter App
+
+Add the package:
+
+```yaml
+dependencies:
+  animated_streaming_markdown: ^0.3.2
+```
+
+Install dependencies:
+
+```sh
+flutter pub get
+```
+
+Import the package:
+
+```dart
+import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
+```
+
+## 2. Add a Demo Screen
+
+Create a `StreamingMarkdownDemo` widget:
+
+```dart
+import 'dart:async';
+
+import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
+import 'package:flutter/material.dart';
+
+class StreamingMarkdownDemo extends StatefulWidget {
+  const StreamingMarkdownDemo({super.key});
+
+  @override
+  State<StreamingMarkdownDemo> createState() => _StreamingMarkdownDemoState();
+}
+
+class _StreamingMarkdownDemoState extends State<StreamingMarkdownDemo> {
+  final MarkdownStreamParser _parser = MarkdownStreamParser();
+  final List<MarkdownBlock> _blocks = <MarkdownBlock>[];
+
+  bool _parserReady = false;
+  bool _streaming = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startParser();
+  }
+
+  Future<void> _startParser() async {
+    await _parser.start();
+    if (!mounted) return;
+    setState(() {
+      _parserReady = true;
+    });
+  }
+
+  @override
+  void dispose() {
+    _parser.dispose();
+    super.dispose();
+  }
+}
+```
+
+Use one parser per active stream. Starting the parser in `initState` keeps the
+UI code simple, and disposing it prevents the isolate from outliving the screen.
+
+## 3. Simulate a Streaming Answer
+
+Add sample chunks and a streaming method inside `_StreamingMarkdownDemoState`:
+
+```dart
+static const List<String> _chunks = <String>[
+  '# Streaming Markdown Demo\n\n',
+  'This message arrives in **small chunks** and is parsed as it grows.\n\n',
+  '## Features\n\n',
+  '- Incremental append parsing\n',
+  '- Token reveal animation\n',
+  '- Markdown-aware selection copy\n\n',
+  '```dart\n',
+  'final parser = MarkdownStreamParser();\n',
+  'await parser.start();\n',
+  'final result = await parser.append(chunk);\n',
+  '```\n\n',
+  '| API | Purpose |\n',
+  '| --- | --- |\n',
+  '| `replace` | Parse a complete snapshot |\n',
+  '| `append` | Parse the next streamed chunk |\n',
+];
+
+Future<void> _runDemoStream() async {
+  if (!_parserReady || _streaming) return;
+
+  setState(() {
+    _streaming = true;
+    _blocks.clear();
+  });
+
+  await _parser.replace('');
+
+  for (final chunk in _chunks) {
+    await Future<void>.delayed(const Duration(milliseconds: 220));
+    final result = await _parser.append(chunk);
+    if (!mounted) return;
+
+    setState(() {
+      _blocks
+        ..clear()
+        ..addAll(result.blocks);
+    });
+  }
+
+  if (!mounted) return;
+  setState(() {
+    _streaming = false;
+  });
+}
+
+Future<void> _resetDemo() async {
+  if (!_parserReady) return;
+
+  final result = await _parser.replace('');
+  if (!mounted) return;
+
+  setState(() {
+    _blocks
+      ..clear()
+      ..addAll(result.blocks);
+    _streaming = false;
+  });
+}
+```
+
+Use `replace('')` before a new stream so the parser state starts from an empty
+document. During a real API call, call `append(chunk)` whenever your backend or
+model emits the next text chunk.
+
+## 4. Render the Blocks
+
+Add the `build` method:
+
+```dart
+@override
+Widget build(BuildContext context) {
+  return Scaffold(
+    appBar: AppBar(
+      title: const Text('Streaming Markdown'),
+      actions: [
+        IconButton(
+          tooltip: 'Reset',
+          onPressed: _parserReady && !_streaming ? _resetDemo : null,
+          icon: const Icon(Icons.refresh),
+        ),
+      ],
+    ),
+    body: SafeArea(
+      child: Column(
+        children: [
+          Expanded(
+            child: CustomScrollView(
+              slivers: [
+                SliverPadding(
+                  padding: const EdgeInsets.all(16),
+                  sliver: AnimatedStreamingMarkdown(
+                    blocks: _blocks,
+                    asSliver: true,
+                    enableSelection: true,
+                    tokenStaggerDelay: const Duration(milliseconds: 45),
+                    tokenAnimationDuration: const Duration(milliseconds: 180),
+                    tokenAnimationCurve: Curves.easeOutCubic,
+                    placeholder: const Center(
+                      child: Text('Tap Start to stream Markdown.'),
+                    ),
+                    tokenAnimationBuilder: (context, token) {
+                      final t = Curves.easeOutCubic.transform(token.value);
+                      return Opacity(
+                        opacity: t,
+                        child: Transform.translate(
+                          offset: Offset(0, (1 - t) * 6),
+                          child: token.child,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: FilledButton.icon(
+              onPressed: _parserReady && !_streaming ? _runDemoStream : null,
+              icon: _streaming
+                  ? const SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.play_arrow),
+              label: Text(_streaming ? 'Streaming' : 'Start Demo'),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+```
+
+`AnimatedStreamingMarkdown` can render as a normal box widget or as a sliver.
+For chat and document screens, `asSliver: true` fits naturally inside
+`CustomScrollView`.
+
+## 5. Run It
+
+Use the screen from `main.dart`:
+
+```dart
+import 'package:flutter/material.dart';
+
+import 'streaming_markdown_demo.dart';
+
+void main() {
+  runApp(const DemoApp());
+}
+
+class DemoApp extends StatelessWidget {
+  const DemoApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+        useMaterial3: true,
+      ),
+      home: const StreamingMarkdownDemo(),
+    );
+  }
+}
+```
+
+Run the app:
+
+```sh
+flutter run
+```
+
+## Adapting to a Real Stream
+
+Replace `_chunks` and `_runDemoStream` with your own stream source:
+
+```dart
+Future<void> readModelStream(Stream<String> stream) async {
+  await _parser.replace('');
+
+  await for (final chunk in stream) {
+    final result = await _parser.append(chunk);
+    if (!mounted) return;
+    setState(() {
+      _blocks
+        ..clear()
+        ..addAll(result.blocks);
+    });
+  }
+}
+```
+
+If your backend sends complete snapshots instead of appended chunks, call
+`replace(markdown)` for each update.
+
+## Practical Notes
+
+- Keep a parser alive for the lifetime of one active stream.
+- Use `append` only when each update contains the next new text chunk.
+- Use `replace` when each update contains the whole current document.
+- Enable `enableSelection` when users need copy behavior.
+- Dispose the parser from `dispose`.
+- Keep token delays short for high-volume chat streams.
