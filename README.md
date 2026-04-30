@@ -18,7 +18,7 @@
   <p align="center">
     Streaming Markdown parser + renderer for Flutter, optimized for incremental append flows.
     <br />
-    <a href="https://pub.dev/documentation/animated_streaming_markdown/latest/"><strong>Explore the docs »</strong></a>
+    <a href="https://samnn.dev"><strong>Explore the docs »</strong></a>
     <br />
     <br />
     <a href="https://github.com/samnn152/streaming-markdown/tree/main/example">View Demo</a>
@@ -93,7 +93,7 @@ It is designed for chat-like or streaming text interfaces where markdown arrives
 1. Add dependency:
    ```yaml
    dependencies:
-    animated_streaming_markdown: ^0.3.2
+    animated_streaming_markdown: ^0.3.3
    ```
 2. Install packages:
    ```sh
@@ -144,7 +144,10 @@ AnimatedStreamingMarkdown(
 - `MarkdownStreamParser.append(chunk)`
 - `MarkdownStreamParser.parse(operation, text)`
 - `MarkdownStreamParser.dispose()`
+- `MarkdownSyncParser.parseMarkdown(markdown)`
+- `warmUpStreamingMarkdownParser(includeWorker: true)`
 - `AnimatedStreamingMarkdown(...)`
+- `AnimatedStreamingMarkdown.fromMarkdown(...)`
   - `blocks`
   - `asSliver`
   - `tokenStaggerDelay`
@@ -158,8 +161,9 @@ For a complete integration sample, check [`example/lib/src/demos/markdown_cases_
 
 ## Documentation
 
+- [Documentation site](https://samnn.dev)
 - [Package page](https://pub.dev/packages/animated_streaming_markdown)
-- [API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/)
+- [Generated API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/)
 - [Example app](https://github.com/samnn152/streaming-markdown/tree/main/example)
 - [Migration guide: 0.2.x to 0.3.x](docs/migration-0-3.mdx)
 
@@ -212,7 +216,7 @@ the package behavior more directly:
 - Done: Per-token custom animation builder API
 - Done: Example with multiple animation presets
 - Done: Docusaurus documentation site for `samnn.dev`
-- Planned: Convenience constructors and helper functions
+- Done: Convenience constructors and sync parser helpers
 - Planned: Code block copy and LaTeX support research
 - Planned: Richer copy modes and improved multi-content drag selection
 - Planned: More parser/renderer benchmark scenarios
@@ -244,7 +248,8 @@ Distributed under the Apache-2.0 License. See [`LICENSE`](LICENSE) for details.
 
 ## Contact
 
-- Documentation: [https://pub.dev/documentation/animated_streaming_markdown/latest/](https://pub.dev/documentation/animated_streaming_markdown/latest/)
+- Documentation: [https://samnn.dev](https://samnn.dev)
+- API reference: [https://pub.dev/documentation/animated_streaming_markdown/latest/](https://pub.dev/documentation/animated_streaming_markdown/latest/)
 - Repository: [https://github.com/samnn152/streaming-markdown](https://github.com/samnn152/streaming-markdown)
 - Issues: [https://github.com/samnn152/streaming-markdown/issues](https://github.com/samnn152/streaming-markdown/issues)
 

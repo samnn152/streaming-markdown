@@ -8,6 +8,8 @@ import 'dart:async';
 import 'dart:collection';
 
 import '../model/render_node.dart';
+import '../worker/parse_worker_stub.dart'
+    if (dart.library.ffi) '../worker/parse_worker.dart';
 
 part 'api.dart';
 part 'text/blocks.dart';
@@ -99,6 +101,67 @@ class AnimatedStreamingMarkdown extends StreamingMarkdownRenderView {
           customBlockBuilder: blockBuilder,
           onLinkTap: onLinkTap,
         );
+
+  /// Creates a renderer by parsing a complete markdown string synchronously.
+  ///
+  /// This constructor is intended for short markdown where first-frame display
+  /// matters more than moving parse work to the isolate-backed
+  /// [MarkdownStreamParser]. For long or continuously streamed content, keep
+  /// using [MarkdownStreamParser] and pass parsed [blocks] to the default
+  /// constructor. The default [syncParserBackend] uses the pure-Dart parser to
+  /// avoid native parser cold-start cost on the first frame.
+  factory AnimatedStreamingMarkdown.fromMarkdown({
+    Key? key,
+    required String markdown,
+    MarkdownSyncParserBackend syncParserBackend =
+        MarkdownSyncParserBackend.dart,
+    String placeholder = '',
+    EdgeInsetsGeometry padding = const EdgeInsets.all(12),
+    bool asSliver = false,
+    bool allowIncompleteInlineSyntax = false,
+    Duration tokenStaggerDelay = Duration.zero,
+    VoidCallback? onTokenDelay,
+    VoidCallback? onTokenAnimationEnd,
+    double tokenAnimationDurationFactor = 0,
+    Duration? tokenAnimationDuration,
+    Curve tokenAnimationCurve = Curves.easeOut,
+    AnimatedMarkdownTokenBuilder? tokenAnimationBuilder,
+    bool tokenAnimationPaused = false,
+    AnimatedMarkdownTokenCompaction tokenCompaction =
+        AnimatedMarkdownTokenCompaction.automatic,
+    bool showTokenDebugColors = false,
+    bool enableSelection = false,
+    StreamingMarkdownThemeData theme = const StreamingMarkdownThemeData(),
+    AnimatedMarkdownBlockBuilder? blockBuilder,
+    ValueChanged<String>? onLinkTap,
+  }) {
+    final MarkdownParseResult result = MarkdownSyncParser.parseMarkdown(
+      markdown,
+      backend: syncParserBackend,
+    );
+    return AnimatedStreamingMarkdown(
+      key: key,
+      blocks: result.blocks,
+      placeholder: placeholder,
+      padding: padding,
+      asSliver: asSliver,
+      allowIncompleteInlineSyntax: allowIncompleteInlineSyntax,
+      tokenStaggerDelay: tokenStaggerDelay,
+      onTokenDelay: onTokenDelay,
+      onTokenAnimationEnd: onTokenAnimationEnd,
+      tokenAnimationDurationFactor: tokenAnimationDurationFactor,
+      tokenAnimationDuration: tokenAnimationDuration,
+      tokenAnimationCurve: tokenAnimationCurve,
+      tokenAnimationBuilder: tokenAnimationBuilder,
+      tokenAnimationPaused: tokenAnimationPaused,
+      tokenCompaction: tokenCompaction,
+      showTokenDebugColors: showTokenDebugColors,
+      enableSelection: enableSelection,
+      theme: theme,
+      blockBuilder: blockBuilder,
+      onLinkTap: onLinkTap,
+    );
+  }
 }
 
 /// Legacy name for [AnimatedStreamingMarkdown].

@@ -1,0 +1,55 @@
+name: Main CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Analyze and test package
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install package dependencies
+        run: flutter pub get
+
+      - name: Analyze package
+        run: dart analyze
+
+      - name: Run render tests
+        run: flutter test test/render/streaming_markdown_test.dart
+
+  docs:
+    name: Build docs
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install docs dependencies
+        run: npm ci
+
+      - name: Build docs
+        run: npm run build

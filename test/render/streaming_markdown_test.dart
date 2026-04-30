@@ -68,6 +68,132 @@ void main() {
     expect((doc.blocks[1] as ParagraphNode).text, 'Body');
   });
 
+  test('sync parser returns render blocks without isolate startup', () {
+    final Stopwatch watch = Stopwatch()..start();
+    final MarkdownParseResult result = MarkdownSyncParser.parseMarkdown(
+      '# Sync title\n\nShort markdown renders immediately.',
+      backend: MarkdownSyncParserBackend.dart,
+    );
+    watch.stop();
+
+    expect(result.blocks, hasLength(2));
+    expect(result.mode, 'sync-dart-set');
+    expect(result.blocks.first.type, anyOf('atx_heading', 'setext_heading'));
+    expect(result.blocks.first.content, 'Sync title');
+    debugPrint(
+      'MarkdownSyncParser dart parse: '
+      '${watch.elapsedMicroseconds / 1000} ms',
+    );
+    expect(watch.elapsedMilliseconds, lessThan(50));
+  });
+
+  test('sync Dart parser emits renderer-compatible block types', () {
+    const String markdown = '''
+---
+title: Demo
+---
+
+Setext title
+===
+
+> quoted
+> text
+
+| Name | Status |
+| --- | --- |
+| Dart | Ready |
+
+---
+
+<div>HTML</div>
+
+[^note]: footnote text
+
+[ref]: https://example.com
+''';
+
+    final MarkdownParseResult result = MarkdownSyncParser.parseMarkdown(
+      markdown,
+      backend: MarkdownSyncParserBackend.dart,
+    );
+    final List<String> types = result.blocks
+        .map((MarkdownRenderNode block) => block.type)
+        .toList(growable: false);
+
+    expect(types, contains('front_matter'));
+    expect(types, contains('setext_heading'));
+    expect(types, contains('block_quote'));
+    expect(types, contains('pipe_table'));
+    expect(types, contains('thematic_break'));
+    expect(types, contains('html_block'));
+    expect(types, contains('footnote_definition'));
+    expect(types, contains('link_reference_definition'));
+    expect(
+      result.blocks
+          .firstWhere(
+            (MarkdownRenderNode block) => block.type == 'pipe_table',
+          )
+          .raw,
+      contains('| Dart | Ready |'),
+    );
+  });
+
+  test('sync Dart parser content matches GFM block golden', () {
+    final MarkdownParseResult result = MarkdownSyncParser.parseMarkdown(
+      _gfmParserGoldenMarkdown,
+      backend: MarkdownSyncParserBackend.dart,
+    );
+
+    expect(_nodeContentGolden(result.blocks), <String>[
+      'atx_heading|content=GFM parser case 1|raw=# GFM parser case 1',
+      'paragraph|content=Streaming markdown case 1 mixes **strong**, _emphasis_, ~~deleted text~~, `inline | code`, an autolink https://example.com/1, and a reference link to [the docs][docs].|raw=Streaming markdown case 1 mixes **strong**, _emphasis_, ~~deleted text~~, `inline | code`, an autolink https://example.com/1, and a reference link to [the docs][docs].',
+      'block_quote|content=GFM quote content keeps **inline markdown** intact.|raw=> GFM quote content keeps **inline markdown** intact.',
+      'list|content=[x] completed task for case 1 [ ] pending task with `inline | pipe` nested content continues after the task marker|raw=- [x] completed task for case 1 - [ ] pending task with `inline | pipe` - nested content continues after the task marker',
+      'pipe_table|content=| Feature | Value | Notes | | --- | ---: | --- | | Case | 1 | table row | | Pipes | `a | b` | inline code cell ||raw=| Feature | Value | Notes | | --- | ---: | --- | | Case | 1 | table row | | Pipes | `a | b` | inline code cell |',
+      'paragraph|content=Footnote reference[^case-1] before the code fence.|raw=Footnote reference[^case-1] before the code fence.',
+      "fenced_code_block|content=final value1 = 17; debugPrint('case 1: \$value1');|raw=```dart final value1 = 17; debugPrint('case 1: \$value1'); ```",
+      'footnote_definition|content=Footnote body for parser case 1.|raw=[^case-1]: Footnote body for parser case 1.',
+      'link_reference_definition|content=https://pub.dev/packages/animated_streaming_markdown|raw=[docs]: https://pub.dev/packages/animated_streaming_markdown',
+    ]);
+  });
+
+  test('native parser exposes content for render block containers', () {
+    if (!isStreamingMarkdownNativeLibraryAvailable) {
+      return;
+    }
+
+    final MarkdownParseResult result = MarkdownSyncParser.parseMarkdown(
+      _gfmParserGoldenMarkdown,
+      backend: MarkdownSyncParserBackend.native,
+    );
+
+    for (final String type in <String>[
+      'block_quote',
+      'list',
+      'fenced_code_block',
+      'footnote_definition',
+      'link_reference_definition',
+    ]) {
+      final MarkdownRenderNode node = result.blocks.firstWhere(
+        (MarkdownRenderNode node) => node.type == type,
+      );
+      expect(
+        _compactGoldenText(node.content),
+        isNotEmpty,
+        reason: '$type should expose meaningful content',
+      );
+    }
+  });
+
+  test('parser warm-up is shared by sync and worker APIs', () async {
+    final StreamingMarkdownWarmUpResult result =
+        await warmUpStreamingMarkdownParser(includeWorker: true);
+
+    expect(result.totalTime, greaterThanOrEqualTo(Duration.zero));
+    expect(result.currentIsolateTime, greaterThanOrEqualTo(Duration.zero));
+    expect(result.workerTime, isNotNull);
+  });
+
   test('tree-sitter block parser returns full syntax tree', () {
     if (!isStreamingMarkdownNativeLibraryAvailable) {
       return;
@@ -119,6 +245,35 @@ void main() {
     } finally {
       worker.dispose();
     }
+  });
+
+  testWidgets('fromMarkdown with zero durations paints on first pump', (
+    WidgetTester tester,
+  ) async {
+    final Stopwatch watch = Stopwatch()..start();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnimatedStreamingMarkdown.fromMarkdown(
+            markdown: '# Instant\n\nShort markdown should show now.',
+            padding: EdgeInsets.zero,
+            tokenStaggerDelay: Duration.zero,
+            tokenAnimationDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+    watch.stop();
+
+    expect(find.text('Instant'), findsOneWidget);
+    expect(find.text('Short'), findsOneWidget);
+    expect(find.text('markdown'), findsOneWidget);
+    expect(find.text('now.'), findsOneWidget);
+    debugPrint(
+      'fromMarkdown zero-duration first pump: '
+      '${watch.elapsedMicroseconds / 1000} ms',
+    );
+    expect(watch.elapsedMilliseconds, lessThan(500));
   });
 
   testWidgets('rendered links are tappable with text selection enabled', (
@@ -1593,4 +1748,46 @@ int _widgetSpanCount(InlineSpan span) {
 
 Finder _footnoteLabel(String id) {
   return find.text('$id: ');
+}
+
+const String _gfmParserGoldenMarkdown = r'''
+# GFM parser case 1
+
+Streaming markdown case 1 mixes **strong**, _emphasis_, ~~deleted text~~, `inline | code`, an autolink https://example.com/1, and a reference link to [the docs][docs].
+
+> GFM quote content keeps **inline markdown** intact.
+
+- [x] completed task for case 1
+- [ ] pending task with `inline | pipe`
+- nested content continues after the task marker
+
+| Feature | Value | Notes |
+| --- | ---: | --- |
+| Case | 1 | table row |
+| Pipes | `a | b` | inline code cell |
+
+Footnote reference[^case-1] before the code fence.
+
+```dart
+final value1 = 17;
+debugPrint('case 1: $value1');
+```
+
+[^case-1]: Footnote body for parser case 1.
+
+[docs]: https://pub.dev/packages/animated_streaming_markdown
+''';
+
+List<String> _nodeContentGolden(List<MarkdownRenderNode> nodes) {
+  return nodes
+      .map(
+        (MarkdownRenderNode node) =>
+            '${node.type}|content=${_compactGoldenText(node.content)}'
+            '|raw=${_compactGoldenText(node.raw)}',
+      )
+      .toList(growable: false);
+}
+
+String _compactGoldenText(String value) {
+  return value.replaceAll('\r', '').replaceAll(RegExp(r'\s+'), ' ').trim();
 }

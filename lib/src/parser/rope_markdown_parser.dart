@@ -25,6 +25,22 @@ class RopeMarkdownParser {
         continue;
       }
 
+      if (i == 0 && _isFrontMatterStart(line.text)) {
+        final _GenericBlockResult frontMatter = _parseFrontMatter(lines, i);
+        if (frontMatter.closed) {
+          blocks.add(
+            GenericBlockNode(
+              start: line.start,
+              end: frontMatter.end,
+              type: 'front_matter',
+              content: frontMatter.content,
+            ),
+          );
+          i = frontMatter.nextIndex;
+          continue;
+        }
+      }
+
       final _HeadingMatch? heading = _parseHeading(line);
       if (heading != null) {
         blocks.add(
@@ -36,6 +52,62 @@ class RopeMarkdownParser {
           ),
         );
         i++;
+        continue;
+      }
+
+      final _SetextHeadingMatch? setext = _parseSetextHeading(lines, i);
+      if (setext != null) {
+        blocks.add(
+          HeadingNode(
+            start: line.start,
+            end: setext.end,
+            level: setext.level,
+            text: setext.text,
+            type: 'setext_heading',
+          ),
+        );
+        i = setext.nextIndex;
+        continue;
+      }
+
+      if (_isThematicBreak(line.text)) {
+        blocks.add(
+          GenericBlockNode(
+            start: line.start,
+            end: line.end,
+            type: 'thematic_break',
+            content: '',
+          ),
+        );
+        i++;
+        continue;
+      }
+
+      final _GenericBlockResult? table = _parsePipeTable(lines, i);
+      if (table != null) {
+        blocks.add(
+          GenericBlockNode(
+            start: line.start,
+            end: table.end,
+            type: 'pipe_table',
+            content: table.content,
+          ),
+        );
+        i = table.nextIndex;
+        continue;
+      }
+
+      if (_isBlockQuoteStart(line.text)) {
+        final _GenericBlockResult quote = _parseBlockQuote(lines, i);
+        blocks.add(
+          GenericBlockNode(
+            start: line.start,
+            end: quote.end,
+            type: 'block_quote',
+            content: quote.content,
+          ),
+        );
+        i = quote.nextIndex;
         continue;
       }
 
@@ -53,6 +125,34 @@ class RopeMarkdownParser {
           ),
         );
         i = fenced.nextIndex;
+        continue;
+      }
+
+      final String? referenceType = _referenceDefinitionType(line.text);
+      if (referenceType != null) {
+        blocks.add(
+          GenericBlockNode(
+            start: line.start,
+            end: line.end,
+            type: referenceType,
+            content: _referenceDefinitionContent(referenceType, line.text),
+          ),
+        );
+        i++;
+        continue;
+      }
+
+      if (_isHtmlBlockStart(line.text)) {
+        final _GenericBlockResult html = _parseHtmlBlock(lines, i);
+        blocks.add(
+          GenericBlockNode(
+            start: line.start,
+            end: html.end,
+            type: 'html_block',
+            content: html.content,
+          ),
+        );
+        i = html.nextIndex;
         continue;
       }
 
@@ -133,6 +233,30 @@ class RopeMarkdownParser {
 
     final String text = line.text.substring(i + 1).trimRight();
     return _HeadingMatch(level: level, text: text);
+  }
+
+  _SetextHeadingMatch? _parseSetextHeading(
+    List<_LineSlice> lines,
+    int startIndex,
+  ) {
+    if (startIndex + 1 >= lines.length) {
+      return null;
+    }
+    final _LineSlice textLine = lines[startIndex];
+    final _LineSlice markerLine = lines[startIndex + 1];
+    if (_isBlank(textLine.text) || !_isSetextDelimiter(markerLine.text)) {
+      return null;
+    }
+    if (_startsBlock(textLine.text, allowSetext: false)) {
+      return null;
+    }
+    final String marker = markerLine.text.trimLeft();
+    return _SetextHeadingMatch(
+      end: markerLine.end,
+      nextIndex: startIndex + 2,
+      level: marker.startsWith('=') ? 1 : 2,
+      text: textLine.text.trim(),
+    );
   }
 
   _FenceStart? _parseFenceStart(String text) {
@@ -244,9 +368,8 @@ class RopeMarkdownParser {
     while (i < lines.length) {
       final _LineSlice line = lines[i];
       if (_isBlank(line.text)) break;
-      if (_parseHeading(line) != null) break;
-      if (_parseFenceStart(line.text) != null) break;
-      if (_parseListItem(line.text) != null) break;
+      if (i != startIndex && _startsBlock(line.text)) break;
+      if (i == startIndex + 1 && _isSetextDelimiter(line.text)) break;
 
       if (text.isNotEmpty) {
         text.writeln();
@@ -257,6 +380,175 @@ class RopeMarkdownParser {
 
     final int end = i == startIndex ? lines[startIndex].end : lines[i - 1].end;
     return _ParagraphResult(end: end, nextIndex: i, text: text.toString());
+  }
+
+  _GenericBlockResult _parseFrontMatter(
+    List<_LineSlice> lines,
+    int startIndex,
+  ) {
+    final StringBuffer content = StringBuffer();
+    for (int i = startIndex + 1; i < lines.length; i++) {
+      if (_isFrontMatterStart(lines[i].text)) {
+        return _GenericBlockResult(
+          end: lines[i].end,
+          nextIndex: i + 1,
+          content: content.toString().trimRight(),
+          closed: true,
+        );
+      }
+      content.writeln(lines[i].text);
+    }
+    return _GenericBlockResult(
+      end: lines[startIndex].end,
+      nextIndex: startIndex + 1,
+      content: '',
+      closed: false,
+    );
+  }
+
+  _GenericBlockResult? _parsePipeTable(
+    List<_LineSlice> lines,
+    int startIndex,
+  ) {
+    if (startIndex + 1 >= lines.length ||
+        !_isPipeTableRow(lines[startIndex].text) ||
+        !_isPipeTableDelimiter(lines[startIndex + 1].text)) {
+      return null;
+    }
+
+    final StringBuffer raw = StringBuffer()..writeln(lines[startIndex].text);
+    raw.writeln(lines[startIndex + 1].text);
+    int i = startIndex + 2;
+    while (i < lines.length && _isPipeTableRow(lines[i].text)) {
+      raw.writeln(lines[i].text);
+      i++;
+    }
+
+    return _GenericBlockResult(
+      end: lines[i - 1].end,
+      nextIndex: i,
+      content: raw.toString().trimRight(),
+      closed: true,
+    );
+  }
+
+  _GenericBlockResult _parseBlockQuote(
+    List<_LineSlice> lines,
+    int startIndex,
+  ) {
+    final StringBuffer content = StringBuffer();
+    int i = startIndex;
+    while (i < lines.length) {
+      final String text = lines[i].text;
+      if (!_isBlockQuoteStart(text)) {
+        break;
+      }
+      content.writeln(text.replaceFirst(RegExp(r'^\s{0,3}>\s?'), ''));
+      i++;
+    }
+    return _GenericBlockResult(
+      end: lines[i - 1].end,
+      nextIndex: i,
+      content: content.toString().trimRight(),
+      closed: true,
+    );
+  }
+
+  _GenericBlockResult _parseHtmlBlock(List<_LineSlice> lines, int startIndex) {
+    final StringBuffer content = StringBuffer();
+    int i = startIndex;
+    while (i < lines.length && !_isBlank(lines[i].text)) {
+      content.writeln(lines[i].text);
+      i++;
+    }
+    return _GenericBlockResult(
+      end: lines[i - 1].end,
+      nextIndex: i,
+      content: content.toString().trimRight(),
+      closed: true,
+    );
+  }
+
+  bool _startsBlock(String text, {bool allowSetext = true}) {
+    return _parseHeading(_LineSlice(start: 0, end: text.length, text: text)) !=
+            null ||
+        _parseFenceStart(text) != null ||
+        _parseListItem(text) != null ||
+        _isThematicBreak(text) ||
+        _isBlockQuoteStart(text) ||
+        _isHtmlBlockStart(text) ||
+        _referenceDefinitionType(text) != null ||
+        (allowSetext && _isSetextDelimiter(text));
+  }
+
+  bool _isFrontMatterStart(String text) {
+    return RegExp(r'^\s{0,3}---\s*$').hasMatch(text);
+  }
+
+  bool _isThematicBreak(String text) {
+    final String compact = text.trim().replaceAll(RegExp(r'\s+'), '');
+    if (compact.length < 3) {
+      return false;
+    }
+    return RegExp(r'^(\*\*\*+|---+|___+)$').hasMatch(compact);
+  }
+
+  bool _isSetextDelimiter(String text) {
+    return RegExp(r'^\s{0,3}(=+|-+)\s*$').hasMatch(text);
+  }
+
+  bool _isPipeTableRow(String text) {
+    return text.contains('|') && text.trim().split('|').length >= 3;
+  }
+
+  bool _isPipeTableDelimiter(String text) {
+    final String trimmed = text.trim();
+    if (!trimmed.contains('|')) {
+      return false;
+    }
+    final List<String> cells = trimmed
+        .split('|')
+        .map((String cell) => cell.trim())
+        .where((String cell) => cell.isNotEmpty)
+        .toList(growable: false);
+    if (cells.isEmpty) {
+      return false;
+    }
+    return cells.every(
+      (String cell) => RegExp(r'^:?-{3,}:?$').hasMatch(cell),
+    );
+  }
+
+  bool _isBlockQuoteStart(String text) {
+    return RegExp(r'^\s{0,3}>').hasMatch(text);
+  }
+
+  bool _isHtmlBlockStart(String text) {
+    final String trimmed = text.trimLeft();
+    return RegExp(
+      r'^</?(?:article|aside|blockquote|details|div|dl|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|main|nav|ol|p|pre|section|table|ul|script|style|!--)\b',
+      caseSensitive: false,
+    ).hasMatch(trimmed);
+  }
+
+  String? _referenceDefinitionType(String text) {
+    if (RegExp(r'^\s{0,3}\[\^[^\]]+\]:').hasMatch(text)) {
+      return 'footnote_definition';
+    }
+    if (RegExp(r'^\s{0,3}\[[^\]]+\]:\s*\S+').hasMatch(text)) {
+      return 'link_reference_definition';
+    }
+    return null;
+  }
+
+  String _referenceDefinitionContent(String type, String text) {
+    if (type == 'footnote_definition') {
+      return text.replaceFirst(RegExp(r'^\s{0,3}\[\^[^\]]+\]:\s*'), '').trim();
+    }
+    if (type == 'link_reference_definition') {
+      return text.replaceFirst(RegExp(r'^\s{0,3}\[[^\]]+\]:\s*'), '').trim();
+    }
+    return text.trim();
   }
 
   bool _isBlank(String text) => text.trim().isEmpty;

@@ -41,6 +41,32 @@ Dispose the parser when the stream is finished:
 parser.dispose();
 ```
 
+## Render a Complete Markdown String
+
+For short, already-complete Markdown, use the synchronous factory to parse and
+paint without starting an isolate-backed stream parser:
+
+```dart
+AnimatedStreamingMarkdown.fromMarkdown(
+  markdown: '# Hello\n\nRendered from a complete Markdown string.',
+  tokenStaggerDelay: Duration.zero,
+  tokenAnimationDuration: Duration.zero,
+);
+```
+
+Use `MarkdownStreamParser` for long-running streams. Use
+`AnimatedStreamingMarkdown.fromMarkdown` when you already have a full Markdown
+snapshot and want the shortest setup path.
+
+## Warm Up Parser Resources
+
+Warm parser resources before the first visible render when startup latency is
+important:
+
+```dart
+await warmUpStreamingMarkdownParser(includeWorker: true);
+```
+
 ## Sliver Layouts
 
 Set `asSliver` when the renderer is placed inside a `CustomScrollView`:

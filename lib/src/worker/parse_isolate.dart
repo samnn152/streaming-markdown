@@ -158,6 +158,18 @@ String _meaningfulContent(String type, String raw) {
         '',
       );
       break;
+    case 'list':
+      content = content
+          .split('\n')
+          .map(
+            (String line) => line.replaceFirst(
+              RegExp(r'^\s*(?:[-+*]|\d+[.)])\s*(?:\[[ xX]\]\s*)?'),
+              '',
+            ),
+          )
+          .where((String line) => line.trim().isNotEmpty)
+          .join(' ');
+      break;
     case 'block_quote':
       content = content
           .split('\n')
@@ -195,6 +207,18 @@ String _meaningfulContent(String type, String raw) {
       if (match != null) {
         content = match.group(1)!;
       }
+      break;
+    case 'footnote_definition':
+      content = content.replaceFirst(
+        RegExp(r'^\s{0,3}\[\^[^\]]+\]:\s*'),
+        '',
+      );
+      break;
+    case 'link_reference_definition':
+      content = content.replaceFirst(
+        RegExp(r'^\s{0,3}\[[^\]]+\]:\s*'),
+        '',
+      );
       break;
     default:
       break;

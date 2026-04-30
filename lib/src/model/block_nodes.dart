@@ -30,6 +30,7 @@ class HeadingNode extends MarkdownBlockNode {
     required super.end,
     required this.level,
     required this.text,
+    this.type = 'atx_heading',
   });
 
   /// Heading level from `1` to `6`.
@@ -37,6 +38,9 @@ class HeadingNode extends MarkdownBlockNode {
 
   /// Heading content with marker tokens removed.
   final String text;
+
+  /// Renderer-compatible heading type.
+  final String type;
 }
 
 /// Paragraph block node.
@@ -50,6 +54,24 @@ class ParagraphNode extends MarkdownBlockNode {
 
   /// Paragraph text content.
   final String text;
+}
+
+/// Generic block node for Markdown constructs parsed without a specialized
+/// model type.
+class GenericBlockNode extends MarkdownBlockNode {
+  /// Creates a generic block node.
+  const GenericBlockNode({
+    required super.start,
+    required super.end,
+    required this.type,
+    required this.content,
+  });
+
+  /// Renderer-compatible block type.
+  final String type;
+
+  /// Human-readable content extracted from the block.
+  final String content;
 }
 
 /// Fenced code block node (triple backticks or tildes).

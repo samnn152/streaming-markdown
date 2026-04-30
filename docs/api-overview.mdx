@@ -33,6 +33,21 @@ await parser.replace(markdown);
 await parser.append(chunk);
 ```
 
+For short complete Markdown snapshots, `MarkdownSyncParser` parses on the
+current isolate:
+
+```dart
+final result = MarkdownSyncParser.parseMarkdown(
+  markdown,
+  backend: MarkdownSyncParserBackend.auto,
+);
+```
+
+`MarkdownSyncParserBackend.dart` uses the pure-Dart parser path.
+`MarkdownSyncParserBackend.native` uses the native parser when available.
+`MarkdownSyncParserBackend.auto` prefers the native parser and falls back when
+needed.
+
 ## Parse Result
 
 `MarkdownParseResult.blocks` is the primary output for rendering:
@@ -52,6 +67,15 @@ block counts, inline type counts, and timing values.
 AnimatedStreamingMarkdown(
   blocks: result.blocks,
   enableSelection: true,
+);
+```
+
+For simple complete Markdown rendering, use the factory constructor:
+
+```dart
+AnimatedStreamingMarkdown.fromMarkdown(
+  markdown: markdown,
+  syncParserBackend: MarkdownSyncParserBackend.auto,
 );
 ```
 
@@ -105,5 +129,7 @@ Return `null` to use the default widget.
 
 ## API Reference
 
-For constructor parameters, typedefs, and model details, use the generated
+For guides and examples, use the documentation site at
+[samnn.dev](https://samnn.dev). For constructor parameters, typedefs, and model
+details, use the generated
 [Dart API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/).

@@ -1,3 +1,14 @@
+## 0.3.3
+
+- Add `AnimatedStreamingMarkdown.fromMarkdown` for complete Markdown snapshots.
+- Add `MarkdownSyncParser` with `auto`, `native`, and `dart` backend selection.
+- Add `warmUpStreamingMarkdownParser` for shared sync and worker parser warm-up.
+- Add a parser benchmark demo comparing pure Dart, sync native, and isolate worker rendering.
+- Improve pure-Dart GFM block parsing for headings, quotes, tables, lists, code blocks, footnotes, and link references.
+- Add GFM parser content golden tests for `raw` and `content` output.
+- Point package documentation metadata and docs links at `https://samnn.dev`.
+- Remove the old Docs.page configuration now that Docusaurus is the documentation site.
+
 ## 0.3.2
 
 - Add a Docs.page documentation site configuration and MDX documentation pages.

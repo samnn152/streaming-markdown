@@ -108,7 +108,7 @@ const config = {
                 href: 'https://github.com/samnn152/streaming-markdown/issues',
               },
               {
-                label: 'API Reference',
+                label: 'Dart API',
                 href: 'https://pub.dev/documentation/animated_streaming_markdown/latest/',
               },
             ],

@@ -19,6 +19,20 @@ class _HeadingMatch {
   final String text;
 }
 
+class _SetextHeadingMatch {
+  const _SetextHeadingMatch({
+    required this.end,
+    required this.nextIndex,
+    required this.level,
+    required this.text,
+  });
+
+  final int end;
+  final int nextIndex;
+  final int level;
+  final String text;
+}
+
 class _FenceStart {
   const _FenceStart({
     required this.fence,
@@ -76,4 +90,18 @@ class _ParagraphResult {
   final int end;
   final int nextIndex;
   final String text;
+}
+
+class _GenericBlockResult {
+  const _GenericBlockResult({
+    required this.end,
+    required this.nextIndex,
+    required this.content,
+    required this.closed,
+  });
+
+  final int end;
+  final int nextIndex;
+  final String content;
+  final bool closed;
 }
