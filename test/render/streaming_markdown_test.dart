@@ -688,6 +688,137 @@ class Greeter {
     },
   );
 
+  testWidgets('reordered block layout keeps existing token animation state', (
+    WidgetTester tester,
+  ) async {
+    final MarkdownRenderNode existing = _renderNode(
+      'Existingstableword should continue fading',
+      startByte: 40,
+    );
+    final MarkdownRenderNode inserted = _renderNode(
+      'Inserted block',
+      startByte: 0,
+    );
+    List<MarkdownRenderNode> nodes = <MarkdownRenderNode>[existing];
+    late StateSetter updateHost;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            updateHost = setState;
+            return Scaffold(
+              body: StreamingMarkdownRenderView(
+                nodes: nodes,
+                padding: EdgeInsets.zero,
+                tokenFadeInDuration: const Duration(seconds: 2),
+                tokenFadeInCurve: Curves.linear,
+                tokenAnimationBuilder:
+                    (BuildContext context, AnimatedMarkdownToken token) {
+                  final Widget child = token.child;
+                  final Key? key = child is Text
+                      ? ValueKey<String>('token_${child.data}')
+                      : null;
+                  return Opacity(
+                    key: key,
+                    opacity: token.value,
+                    child: child,
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 700));
+    final double beforeInsert = _opacityByKey(
+      tester,
+      const ValueKey<String>('token_Existingstableword'),
+    );
+    expect(beforeInsert, greaterThan(0));
+
+    updateHost(() {
+      nodes = <MarkdownRenderNode>[inserted, existing];
+    });
+    await tester.pump();
+    final double afterInsert = _opacityByKey(
+      tester,
+      const ValueKey<String>('token_Existingstableword'),
+    );
+
+    expect(afterInsert, greaterThan(beforeInsert - 0.2));
+  });
+
+  testWidgets('reordered sliver layout keeps existing token animation state', (
+    WidgetTester tester,
+  ) async {
+    final MarkdownRenderNode existing = _renderNode(
+      'Sliverstableword should continue fading',
+      startByte: 40,
+    );
+    final MarkdownRenderNode inserted = _renderNode(
+      'Inserted sliver block',
+      startByte: 0,
+    );
+    List<MarkdownRenderNode> nodes = <MarkdownRenderNode>[existing];
+    late StateSetter updateHost;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            updateHost = setState;
+            return Scaffold(
+              body: CustomScrollView(
+                slivers: <Widget>[
+                  StreamingMarkdownRenderView(
+                    nodes: nodes,
+                    sliver: true,
+                    padding: EdgeInsets.zero,
+                    tokenFadeInDuration: const Duration(seconds: 2),
+                    tokenFadeInCurve: Curves.linear,
+                    tokenAnimationBuilder:
+                        (BuildContext context, AnimatedMarkdownToken token) {
+                      final Widget child = token.child;
+                      final Key? key = child is Text
+                          ? ValueKey<String>('token_${child.data}')
+                          : null;
+                      return Opacity(
+                        key: key,
+                        opacity: token.value,
+                        child: child,
+                      );
+                    },
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 700));
+    final double beforeInsert = _opacityByKey(
+      tester,
+      const ValueKey<String>('token_Sliverstableword'),
+    );
+    expect(beforeInsert, greaterThan(0));
+
+    updateHost(() {
+      nodes = <MarkdownRenderNode>[inserted, existing];
+    });
+    await tester.pump();
+    final double afterInsert = _opacityByKey(
+      tester,
+      const ValueKey<String>('token_Sliverstableword'),
+    );
+
+    expect(afterInsert, greaterThan(beforeInsert - 0.2));
+  });
+
   testWidgets('resize does not restart fade (sliver=true)', (
     WidgetTester tester,
   ) async {
@@ -1430,6 +1561,10 @@ double _activeTokenOpacity(WidgetTester tester) {
   }
 
   return 0;
+}
+
+double _opacityByKey(WidgetTester tester, Key key) {
+  return tester.widget<Opacity>(find.byKey(key)).opacity;
 }
 
 int _totalWidgetSpanCount(WidgetTester tester) {

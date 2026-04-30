@@ -195,21 +195,39 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
       return SliverPadding(
         padding: widget.padding,
         sliver: SliverList(
-          delegate: SliverChildBuilderDelegate((BuildContext context, int i) {
-            if (i.isOdd) {
-              return SizedBox(height: widget.blockSpacing);
-            }
-            final MarkdownRenderNode node = visibleBlocks[i ~/ 2];
-            final String id = widget.blockIdentityBuilder(node);
-            return _RevealScheduleScope(
-              revealedAt: _revealedAt[id],
-              tokenArrivalDelay: widget.tokenArrivalDelay,
-              paused: widget.paused,
-              child: widget.blockBuilder(context, node),
-            );
-          },
-              childCount:
-                  visibleBlocks.isEmpty ? 0 : visibleBlocks.length * 2 - 1),
+          delegate: SliverChildBuilderDelegate(
+            (BuildContext context, int i) {
+              if (i.isOdd) {
+                return SizedBox(height: widget.blockSpacing);
+              }
+              final MarkdownRenderNode node = visibleBlocks[i ~/ 2];
+              final String id = widget.blockIdentityBuilder(node);
+              return _RevealScheduleScope(
+                key: ValueKey<String>('reveal_$id'),
+                revealedAt: _revealedAt[id],
+                tokenArrivalDelay: widget.tokenArrivalDelay,
+                paused: widget.paused,
+                child: widget.blockBuilder(context, node),
+              );
+            },
+            childCount:
+                visibleBlocks.isEmpty ? 0 : visibleBlocks.length * 2 - 1,
+            findChildIndexCallback: (Key key) {
+              if (key is! ValueKey<String>) {
+                return null;
+              }
+              final String value = key.value;
+              if (!value.startsWith('reveal_')) {
+                return null;
+              }
+              final String id = value.substring('reveal_'.length);
+              final int blockIndex = visibleBlocks.indexWhere(
+                (MarkdownRenderNode node) =>
+                    widget.blockIdentityBuilder(node) == id,
+              );
+              return blockIndex < 0 ? null : blockIndex * 2;
+            },
+          ),
         ),
       );
     }
@@ -217,6 +235,9 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
     final List<Widget> blockChildren = <Widget>[
       for (int i = 0; i < visibleBlocks.length; i++) ...[
         _RevealScheduleScope(
+          key: ValueKey<String>(
+            'reveal_${widget.blockIdentityBuilder(visibleBlocks[i])}',
+          ),
           revealedAt:
               _revealedAt[widget.blockIdentityBuilder(visibleBlocks[i])],
           tokenArrivalDelay: widget.tokenArrivalDelay,

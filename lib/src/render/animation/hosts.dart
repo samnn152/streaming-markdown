@@ -26,6 +26,7 @@ class _BlockRenderHost extends StatefulWidget {
 
 class _RevealScheduleScope extends InheritedWidget {
   const _RevealScheduleScope({
+    super.key,
     required super.child,
     required this.revealedAt,
     required this.tokenArrivalDelay,
