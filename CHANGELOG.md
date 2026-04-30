@@ -2,9 +2,10 @@
 
 - Add a Docs.page documentation site configuration and MDX documentation pages.
 - Add a Docusaurus documentation site for self-hosted `samnn.dev` deployment.
-- Point package homepage and documentation metadata at the published docs site.
+- Point package homepage and documentation metadata at the official pub.dev pages.
 - Expand README links around installation, docs, migration, and contribution entry points.
 - Add a contributor guide for local setup, repository layout, quality gates, and release flow.
+- Add an animated Gemini streaming demo preview for the README.
 
 ## 0.3.1
 

@@ -13,14 +13,15 @@ final class AppEnv {
   }
 
   static String get geminiModel {
+    const String fromDefine = String.fromEnvironment('GEMINI_MODEL');
+    if (fromDefine.isNotEmpty) {
+      return fromDefine;
+    }
+
     final String fromDotenv = dotenv.maybeGet('GEMINI_MODEL')?.trim() ?? '';
     if (fromDotenv.isNotEmpty) {
       return fromDotenv;
     }
-    const String fromDefine = String.fromEnvironment(
-      'GEMINI_MODEL',
-      defaultValue: 'gemini-2.0-flash',
-    );
-    return fromDefine;
+    return 'gemini-2.0-flash';
   }
 }

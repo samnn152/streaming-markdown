@@ -49,6 +49,7 @@ class GeminiMarkdownDemoApp extends StatelessWidget {
       )..add(const ChatStarted()),
       child: MaterialApp(
         title: 'Gemini Markdown Demo',
+        debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0A66C2)),
           useMaterial3: true,

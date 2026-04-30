@@ -18,7 +18,7 @@
   <p align="center">
     Streaming Markdown parser + renderer for Flutter, optimized for incremental append flows.
     <br />
-    <a href="https://samnn.dev"><strong>Explore the docs »</strong></a>
+    <a href="https://pub.dev/documentation/animated_streaming_markdown/latest/"><strong>Explore the docs »</strong></a>
     <br />
     <br />
     <a href="https://github.com/samnn152/streaming-markdown/tree/main/example">View Demo</a>
@@ -30,8 +30,8 @@
 </div>
 
 <p align="center">
-  <a href="https://samnn.dev/build-a-demo">
-    <img src="assets/preview/all-supported-blocks.png" alt="animated_streaming_markdown rendered Markdown preview" width="720">
+  <a href="https://pub.dev/packages/animated_streaming_markdown">
+    <img src="assets/preview/gemini-demo.gif" alt="animated_streaming_markdown Gemini streaming Markdown demo" width="420">
   </a>
 </p>
 
@@ -158,11 +158,10 @@ For a complete integration sample, check [`example/lib/src/demos/markdown_cases_
 
 ## Documentation
 
-- [Documentation site](https://samnn.dev)
-- [Build a complete demo](https://samnn.dev/build-a-demo)
-- [API overview](https://samnn.dev/api-overview)
-- [Migration guide: 0.2.x to 0.3.x](https://samnn.dev/migration-0-3)
-- [Generated Dart API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/)
+- [Package page](https://pub.dev/packages/animated_streaming_markdown)
+- [API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/)
+- [Example app](https://github.com/samnn152/streaming-markdown/tree/main/example)
+- [Migration guide: 0.2.x to 0.3.x](docs/migration-0-3.mdx)
 
 The documentation site is built with Docusaurus from [`docs/`](docs) and
 deployed to GitHub Pages by [`Deploy Documentation`](.github/workflows/docs-pages.yml).
@@ -245,7 +244,7 @@ Distributed under the Apache-2.0 License. See [`LICENSE`](LICENSE) for details.
 
 ## Contact
 
-- Documentation: [https://samnn.dev](https://samnn.dev)
+- Documentation: [https://pub.dev/documentation/animated_streaming_markdown/latest/](https://pub.dev/documentation/animated_streaming_markdown/latest/)
 - Repository: [https://github.com/samnn152/streaming-markdown](https://github.com/samnn152/streaming-markdown)
 - Issues: [https://github.com/samnn152/streaming-markdown/issues](https://github.com/samnn152/streaming-markdown/issues)
 

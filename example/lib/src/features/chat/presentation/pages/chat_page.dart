@@ -363,17 +363,19 @@ class _ChatPageState extends State<ChatPage> {
       builder: (BuildContext context, ChatState state) {
         final Widget answerArea;
         if (_displayedAnswerNodes.isNotEmpty) {
-          answerArea = AnimatedStreamingMarkdown(
-            blocks: _displayedAnswerNodes,
-            allowIncompleteInlineSyntax: true,
-            tokenStaggerDelay: widget.tokenRenderInterval,
-            tokenAnimationDurationFactor:
-                widget.markdownTokenFadeInRelativeToDelay,
-            tokenAnimationDuration: widget.markdownTokenFadeInDuration,
-            enableSelection: widget.markdownEnableSelection,
-            theme: widget.markdownTheme,
-            blockBuilder: widget.markdownCustomBlockBuilder,
-            onLinkTap: widget.markdownOnLinkTap,
+          answerArea = SingleChildScrollView(
+            child: AnimatedStreamingMarkdown(
+              blocks: _displayedAnswerNodes,
+              allowIncompleteInlineSyntax: true,
+              tokenStaggerDelay: widget.tokenRenderInterval,
+              tokenAnimationDurationFactor:
+                  widget.markdownTokenFadeInRelativeToDelay,
+              tokenAnimationDuration: widget.markdownTokenFadeInDuration,
+              enableSelection: widget.markdownEnableSelection,
+              theme: widget.markdownTheme,
+              blockBuilder: widget.markdownCustomBlockBuilder,
+              onLinkTap: widget.markdownOnLinkTap,
+            ),
           );
         } else if (_displayedMarkdown.isNotEmpty) {
           answerArea = SingleChildScrollView(

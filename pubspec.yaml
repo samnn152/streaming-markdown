@@ -1,10 +1,10 @@
 name: animated_streaming_markdown
 description: "Flutter markdown streaming package for Android/iOS/macOS/Linux/Windows (web is not supported)."
 version: 0.3.2
-homepage: https://samnn.dev
+homepage: https://pub.dev/packages/animated_streaming_markdown
 repository: https://github.com/samnn152/streaming-markdown
 issue_tracker: https://github.com/samnn152/streaming-markdown/issues
-documentation: https://samnn.dev
+documentation: https://pub.dev/documentation/animated_streaming_markdown/latest/
 topics:
   - markdown
   - streaming
