@@ -5,3 +5,5 @@ build/
 *.iml
 docs/
 docs.json
+website/
+.github/

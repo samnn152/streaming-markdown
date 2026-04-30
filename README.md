@@ -187,7 +187,7 @@ the package behavior more directly:
 - Done: Streaming renderer for markdown block nodes
 - Done: Per-token custom animation builder API
 - Done: Example with multiple animation presets
-- Done: Docs.page-ready documentation content for `samnn.dev`
+- Done: Docusaurus documentation site for `samnn.dev`
 - Planned: Convenience constructors and helper functions
 - Planned: Code block copy and LaTeX support research
 - Planned: Richer copy modes and improved multi-content drag selection

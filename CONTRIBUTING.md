@@ -27,7 +27,8 @@ flutter pub get
 - `lib/src/native`: native bindings and platform stubs.
 - `example`: demo app and demo content.
 - `test`: regression tests and goldens.
-- `docs`: Docs.page documentation site.
+- `docs`: Markdown documentation source.
+- `website`: Docusaurus documentation site for `samnn.dev`.
 - `doc`: package reference markdown linked from the README.
 
 ## Quality Gates

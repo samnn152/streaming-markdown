@@ -1,6 +1,7 @@
 ## 0.3.2
 
 - Add a Docs.page documentation site configuration and MDX documentation pages.
+- Add a Docusaurus documentation site for self-hosted `samnn.dev` deployment.
 - Point package homepage and documentation metadata at the published docs site.
 - Expand README links around installation, docs, migration, and contribution entry points.
 - Add a contributor guide for local setup, repository layout, quality gates, and release flow.
