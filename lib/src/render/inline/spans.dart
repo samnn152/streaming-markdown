@@ -13,6 +13,7 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
     required Map<String, String> linkReferences,
     required Map<String, int> footnoteNumbers,
   }) {
+    final bool compacted = _TokenCompactionScope.isCompacted(context);
     int visualTokenIndex = tokenStartIndex;
     for (final _InlineToken token in tokens) {
       if (token.isImage) {
@@ -24,6 +25,7 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
           tokenStaggerDelay: tokenStaggerDelay,
           tokenScheduleOrigin: tokenScheduleOrigin,
           tokenAnimationBuilder: tokenAnimationBuilder,
+          animate: !compacted,
           alignment: PlaceholderAlignment.middle,
           child: Text(
             token.altText.isEmpty ? '[image]' : '[image: ${token.altText}]',
@@ -45,6 +47,7 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
           tokenStaggerDelay: tokenStaggerDelay,
           tokenScheduleOrigin: tokenScheduleOrigin,
           tokenAnimationBuilder: tokenAnimationBuilder,
+          animate: !compacted,
           alignment: PlaceholderAlignment.aboveBaseline,
           baseline: TextBaseline.alphabetic,
           child: Text(
@@ -91,7 +94,7 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
           tokenStaggerDelay: tokenStaggerDelay,
           tokenScheduleOrigin: tokenScheduleOrigin,
           tokenAnimationBuilder: tokenAnimationBuilder,
-          animatePerWord: true,
+          animatePerWord: !compacted,
           onTap: enableTextSelection
               ? null
               : () => _onLinkPressed(context, token.linkUrl!),
@@ -108,7 +111,7 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
         tokenStaggerDelay: tokenStaggerDelay,
         tokenScheduleOrigin: tokenScheduleOrigin,
         tokenAnimationBuilder: tokenAnimationBuilder,
-        animatePerWord: true,
+        animatePerWord: !compacted,
       );
     }
   }

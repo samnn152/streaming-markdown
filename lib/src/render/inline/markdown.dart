@@ -20,7 +20,8 @@ extension _StreamingMarkdownInlineMarkdownRenderer
         Theme.of(context).textTheme.bodyLarge ??
         const TextStyle(fontSize: 16);
     final bool showSelectionOverlay = enableTextSelection;
-    const bool animatePerWord = true;
+    final bool compacted = _TokenCompactionScope.isCompacted(context);
+    final bool animatePerWord = !compacted;
     final List<_InlineToken> tokens = _parseInlineTokens(
       normalized,
       references: linkReferences,
@@ -50,6 +51,7 @@ extension _StreamingMarkdownInlineMarkdownRenderer
           tokenStaggerDelay: resolvedTokenStep,
           tokenScheduleOrigin: tokenScheduleOrigin,
           tokenAnimationBuilder: tokenAnimationBuilder,
+          animate: !compacted,
           alignment: PlaceholderAlignment.middle,
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 2),
@@ -83,6 +85,7 @@ extension _StreamingMarkdownInlineMarkdownRenderer
           tokenStaggerDelay: resolvedTokenStep,
           tokenScheduleOrigin: tokenScheduleOrigin,
           tokenAnimationBuilder: tokenAnimationBuilder,
+          animate: !compacted,
           alignment: PlaceholderAlignment.middle,
           tokenUnits: _inlineWordCount(token.text),
           child: Container(
@@ -114,6 +117,7 @@ extension _StreamingMarkdownInlineMarkdownRenderer
           tokenStaggerDelay: resolvedTokenStep,
           tokenScheduleOrigin: tokenScheduleOrigin,
           tokenAnimationBuilder: tokenAnimationBuilder,
+          animate: !compacted,
           alignment: PlaceholderAlignment.aboveBaseline,
           baseline: TextBaseline.alphabetic,
           child: Padding(

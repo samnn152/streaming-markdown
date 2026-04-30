@@ -7,6 +7,8 @@ class _BlockRenderHost extends StatefulWidget {
     required this.node,
     required this.linkReferences,
     required this.footnoteNumbers,
+    required this.compactSettledTokens,
+    required this.compactionDelay,
     required this.builder,
   });
 
@@ -14,6 +16,8 @@ class _BlockRenderHost extends StatefulWidget {
   final MarkdownRenderNode node;
   final Map<String, String> linkReferences;
   final Map<String, int> footnoteNumbers;
+  final bool compactSettledTokens;
+  final Duration compactionDelay;
   final _BlockBuilder builder;
 
   @override
@@ -48,6 +52,13 @@ class _BlockRenderHostState extends State<_BlockRenderHost>
     with AutomaticKeepAliveClientMixin<_BlockRenderHost> {
   String? _cachedSignature;
   Widget? _cachedChild;
+  bool _compacted = false;
+  Timer? _compactionTimer;
+  DateTime? _timerStartedAt;
+  Duration? _timerDelay;
+  Duration? _pausedDelay;
+  bool _paused = false;
+  DateTime? _scheduledForReveal;
 
   @override
   bool get wantKeepAlive => true;
@@ -58,22 +69,173 @@ class _BlockRenderHostState extends State<_BlockRenderHost>
     if (oldWidget.signature != widget.signature) {
       _cachedSignature = null;
       _cachedChild = null;
+      _compacted = false;
+      _cancelCompactionTimer();
     }
+  }
+
+  @override
+  void dispose() {
+    _cancelCompactionTimer();
+    super.dispose();
+  }
+
+  void _cancelCompactionTimer() {
+    _compactionTimer?.cancel();
+    _compactionTimer = null;
+    _timerStartedAt = null;
+    _timerDelay = null;
+    _pausedDelay = null;
+    _scheduledForReveal = null;
+  }
+
+  void _syncCompactionSchedule(BuildContext context) {
+    final _RevealScheduleScope? revealScope = _RevealScheduleScope.maybeOf(
+      context,
+    );
+    final bool paused = revealScope?.paused ?? false;
+    if (!widget.compactSettledTokens) {
+      if (_compacted || _compactionTimer != null) {
+        _cancelCompactionTimer();
+        _compacted = false;
+        _cachedChild = null;
+      }
+      _paused = paused;
+      return;
+    }
+    if (_compacted) {
+      _paused = paused;
+      return;
+    }
+    final DateTime revealedAt = revealScope?.revealedAt ?? DateTime.now();
+    if (_scheduledForReveal != revealedAt) {
+      _cancelCompactionTimer();
+      _scheduledForReveal = revealedAt;
+    }
+    if (!_paused && paused) {
+      _paused = true;
+      _pauseCompactionTimer();
+      return;
+    }
+    if (_paused && !paused) {
+      _paused = false;
+      _resumeCompactionTimer();
+      return;
+    }
+    _paused = paused;
+    if (_paused || _compactionTimer != null) {
+      return;
+    }
+    final Duration delay = widget.compactionDelay;
+    final DateTime compactAt = revealedAt.add(delay);
+    final Duration remaining = compactAt.difference(DateTime.now());
+    if (remaining <= Duration.zero) {
+      _scheduleCompaction();
+      return;
+    }
+    _startCompactionTimer(remaining);
+  }
+
+  void _startCompactionTimer(Duration delay) {
+    _timerStartedAt = DateTime.now();
+    _timerDelay = delay;
+    _compactionTimer = Timer(delay, () {
+      _compactionTimer = null;
+      _timerStartedAt = null;
+      _timerDelay = null;
+      _scheduleCompaction();
+    });
+  }
+
+  void _pauseCompactionTimer() {
+    final Timer? timer = _compactionTimer;
+    if (timer == null) {
+      return;
+    }
+    timer.cancel();
+    _compactionTimer = null;
+    final DateTime? startedAt = _timerStartedAt;
+    final Duration? delay = _timerDelay;
+    if (startedAt == null || delay == null) {
+      _pausedDelay = Duration.zero;
+    } else {
+      final Duration remaining = delay - DateTime.now().difference(startedAt);
+      _pausedDelay = remaining <= Duration.zero ? Duration.zero : remaining;
+    }
+    _timerStartedAt = null;
+    _timerDelay = null;
+  }
+
+  void _resumeCompactionTimer() {
+    final Duration? delay = _pausedDelay;
+    _pausedDelay = null;
+    if (delay == null) {
+      return;
+    }
+    if (delay <= Duration.zero) {
+      _scheduleCompaction();
+      return;
+    }
+    _startCompactionTimer(delay);
+  }
+
+  void _scheduleCompaction() {
+    if (_compacted || !mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _compacted || !widget.compactSettledTokens) {
+        return;
+      }
+      setState(() {
+        _compacted = true;
+        _cachedChild = null;
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
+    _syncCompactionSchedule(context);
     if (_cachedChild == null || _cachedSignature != widget.signature) {
-      _cachedChild = widget.builder(
-        context,
-        widget.node,
-        widget.linkReferences,
-        widget.footnoteNumbers,
+      _cachedChild = _TokenCompactionScope(
+        compacted: _compacted,
+        child: Builder(
+          builder: (BuildContext context) {
+            return widget.builder(
+              context,
+              widget.node,
+              widget.linkReferences,
+              widget.footnoteNumbers,
+            );
+          },
+        ),
       );
       _cachedSignature = widget.signature;
     }
     return RepaintBoundary(child: _cachedChild!);
+  }
+}
+
+class _TokenCompactionScope extends InheritedWidget {
+  const _TokenCompactionScope({
+    required this.compacted,
+    required super.child,
+  });
+
+  final bool compacted;
+
+  static bool isCompacted(BuildContext context) {
+    return context
+            .dependOnInheritedWidgetOfExactType<_TokenCompactionScope>()
+            ?.compacted ??
+        false;
+  }
+
+  @override
+  bool updateShouldNotify(_TokenCompactionScope oldWidget) {
+    return oldWidget.compacted != compacted;
   }
 }
 

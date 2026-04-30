@@ -159,6 +159,74 @@ void main() {
     expect(tappedUrl, 'https://openai.com');
   });
 
+  testWidgets('settled tokens compact to static spans without layout jump', (
+    WidgetTester tester,
+  ) async {
+    const String paragraph =
+        'One two three four five six seven eight nine ten eleven twelve.';
+    final GlobalKey rootKey = GlobalKey();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            key: rootKey,
+            width: 320,
+            child: StreamingMarkdownRenderView(
+              nodes: <MarkdownRenderNode>[_renderNode(paragraph)],
+              padding: EdgeInsets.zero,
+              tokenArrivalDelay: const Duration(milliseconds: 20),
+              tokenFadeInDuration: const Duration(milliseconds: 20),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    expect(_totalWidgetSpanCount(tester), greaterThan(1));
+
+    await tester.pump(const Duration(milliseconds: 260));
+    final Size beforeCompaction = tester.getSize(find.byKey(rootKey));
+    final int beforeCount = _totalWidgetSpanCount(tester);
+    expect(beforeCount, greaterThan(1));
+
+    await tester.pump();
+    final Size afterCompaction = tester.getSize(find.byKey(rootKey));
+    final int afterCount = _totalWidgetSpanCount(tester);
+
+    expect(afterCompaction, beforeCompaction);
+    expect(afterCount, lessThan(beforeCount));
+    expect(afterCount, 0);
+  });
+
+  testWidgets('automatic token compaction preserves custom animation spans', (
+    WidgetTester tester,
+  ) async {
+    const String paragraph = 'Custom animation keeps token widgets.';
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[_renderNode(paragraph)],
+            padding: EdgeInsets.zero,
+            tokenArrivalDelay: const Duration(milliseconds: 20),
+            tokenFadeInDuration: const Duration(milliseconds: 20),
+            tokenAnimationBuilder:
+                (BuildContext context, StreamingMarkdownAnimatedToken token) {
+              return Opacity(opacity: token.value, child: token.child);
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle(const Duration(milliseconds: 500));
+
+    expect(_totalWidgetSpanCount(tester), greaterThan(1));
+  });
+
   testWidgets('selection container is absent when text selection is disabled', (
     WidgetTester tester,
   ) async {
@@ -1158,16 +1226,13 @@ class Greeter {
         containsAll(<String>[
           'Case',
           'Markdown',
-          'Rendered',
-          'behavior',
-          'Inline',
-          'code',
-          'Escaped',
-          'pipe',
+          'Rendered behavior',
+          'Inline code',
+          'Keeps pipe inside code',
+          'Escaped pipe',
+          'Keeps escaped separator',
           'docs',
-          'Tappable',
-          'cell',
-          'content',
+          'Tappable cell content',
         ]));
     expect(plainTexts.where((String text) => text == 'a | b'), hasLength(2));
 
@@ -1364,6 +1429,30 @@ double _activeTokenOpacity(WidgetTester tester) {
     return 1;
   }
 
+  return 0;
+}
+
+int _totalWidgetSpanCount(WidgetTester tester) {
+  int total = 0;
+  for (final RichText richText in tester.widgetList<RichText>(
+    find.byType(RichText),
+  )) {
+    total += _widgetSpanCount(richText.text);
+  }
+  return total;
+}
+
+int _widgetSpanCount(InlineSpan span) {
+  if (span is WidgetSpan) {
+    return 1;
+  }
+  if (span is TextSpan) {
+    int total = 0;
+    for (final InlineSpan child in span.children ?? const <InlineSpan>[]) {
+      total += _widgetSpanCount(child);
+    }
+    return total;
+  }
   return 0;
 }
 

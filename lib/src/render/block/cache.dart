@@ -70,6 +70,8 @@ extension _StreamingMarkdownBlockCache on StreamingMarkdownRenderView {
       ..write(':')
       ..write(tokenAnimationBuilder.hashCode)
       ..write(':')
+      ..write(tokenCompaction)
+      ..write(':')
       ..write(allowUnclosedInlineDelimiters)
       ..write(':')
       ..write(debugTokenHighlight)

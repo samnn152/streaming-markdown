@@ -71,6 +71,8 @@ class AnimatedStreamingMarkdown extends StreamingMarkdownRenderView {
     Curve tokenAnimationCurve = Curves.easeOut,
     AnimatedMarkdownTokenBuilder? tokenAnimationBuilder,
     bool tokenAnimationPaused = false,
+    AnimatedMarkdownTokenCompaction tokenCompaction =
+        AnimatedMarkdownTokenCompaction.automatic,
     bool showTokenDebugColors = false,
     bool enableSelection = false,
     StreamingMarkdownThemeData theme = const StreamingMarkdownThemeData(),
@@ -90,6 +92,7 @@ class AnimatedStreamingMarkdown extends StreamingMarkdownRenderView {
           tokenFadeInCurve: tokenAnimationCurve,
           tokenAnimationBuilder: tokenAnimationBuilder,
           tokenAnimationPaused: tokenAnimationPaused,
+          tokenCompaction: tokenCompaction,
           debugTokenHighlight: showTokenDebugColors,
           enableTextSelection: enableSelection,
           markdownTheme: theme,
@@ -130,6 +133,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     this.tokenFadeInCurve = Curves.easeOut,
     this.tokenAnimationBuilder,
     this.tokenAnimationPaused = false,
+    this.tokenCompaction = AnimatedMarkdownTokenCompaction.automatic,
     this.debugTokenHighlight = false,
     this.enableTextSelection = false,
     this.markdownTheme = const StreamingMarkdownThemeData(),
@@ -177,6 +181,9 @@ class StreamingMarkdownRenderView extends StatelessWidget {
 
   /// Pauses token and block reveal scheduling without changing parser input.
   final bool tokenAnimationPaused;
+
+  /// Merges settled animated word tokens back into static text spans.
+  final AnimatedMarkdownTokenCompaction tokenCompaction;
 
   /// Paints token debug backgrounds to inspect token boundaries.
   final bool debugTokenHighlight;
@@ -254,6 +261,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     final Map<String, int> footnoteNumbers = _extractFootnoteNumbers(nodes);
     final String refsDigest = _linkReferencesDigest(linkReferences);
     final String renderConfigDigest = _renderConfigDigest(context);
+    final bool compactSettledTokens = _shouldCompactSettledTokens();
 
     final Widget content = _SequencedBlockList(
       blocks: blocks,
@@ -275,6 +283,8 @@ class StreamingMarkdownRenderView extends StatelessWidget {
           node: block,
           linkReferences: linkReferences,
           footnoteNumbers: footnoteNumbers,
+          compactSettledTokens: compactSettledTokens,
+          compactionDelay: _tokenCompactionDelay(block),
           builder: _buildRenderedBlockWithRefs,
         );
       },
@@ -291,5 +301,42 @@ class StreamingMarkdownRenderView extends StatelessWidget {
       ),
       child: content,
     );
+  }
+
+  bool _shouldCompactSettledTokens() {
+    if (tokenCompaction == AnimatedMarkdownTokenCompaction.disabled) {
+      return false;
+    }
+    if (debugTokenHighlight) {
+      return false;
+    }
+    if (tokenCompaction == AnimatedMarkdownTokenCompaction.automatic &&
+        tokenAnimationBuilder != null) {
+      return false;
+    }
+    return true;
+  }
+
+  Duration _tokenCompactionDelay(MarkdownRenderNode node) {
+    final int tokens = _roughAnimatedTokenCountForNode(node);
+    final Duration fade = _resolvedTokenFadeInDuration();
+    if (tokens <= 1 || tokenArrivalDelay <= Duration.zero) {
+      return fade;
+    }
+    return tokenArrivalDelay * (tokens - 1) + fade;
+  }
+
+  int _roughAnimatedTokenCountForNode(MarkdownRenderNode node) {
+    if (node.type == 'thematic_break' ||
+        node.type == 'pipe_table_delimiter_row') {
+      return 0;
+    }
+    final String text =
+        (node.content.isNotEmpty ? node.content : node.raw).trim();
+    if (text.isEmpty) {
+      return 1;
+    }
+    final int count = RegExp(r'\S+').allMatches(text).length;
+    return count <= 0 ? 1 : count;
   }
 }

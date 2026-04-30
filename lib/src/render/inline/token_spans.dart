@@ -23,9 +23,19 @@ extension _StreamingMarkdownInlineTokenSpans on StreamingMarkdownRenderView {
     required bool animatePerWord,
     VoidCallback? onTap,
   }) {
-    if (!animatePerWord) {
+    if (!animatePerWord && onTap == null) {
       spans.add(TextSpan(text: text, style: style));
-      return startTokenIndex + 1;
+      return startTokenIndex + _inlineWordCount(text);
+    }
+    if (!animatePerWord) {
+      spans.add(
+        WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: GestureDetector(onTap: onTap, child: Text(text, style: style)),
+        ),
+      );
+      return startTokenIndex + _inlineWordCount(text);
     }
 
     int tokenIndex = startTokenIndex;
@@ -111,7 +121,18 @@ extension _StreamingMarkdownInlineTokenSpans on StreamingMarkdownRenderView {
     required PlaceholderAlignment alignment,
     TextBaseline? baseline,
     int tokenUnits = 1,
+    bool animate = true,
   }) {
+    if (!animate) {
+      spans.add(
+        WidgetSpan(
+          alignment: alignment,
+          baseline: baseline,
+          child: child,
+        ),
+      );
+      return tokenIndex + (tokenUnits <= 0 ? 1 : tokenUnits);
+    }
     spans.add(
       WidgetSpan(
         alignment: alignment,

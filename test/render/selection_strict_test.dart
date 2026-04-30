@@ -499,6 +499,7 @@ void main() {
                 ],
                 enableTextSelection: false,
                 tokenFadeInDuration: Duration.zero,
+                tokenCompaction: AnimatedMarkdownTokenCompaction.disabled,
               ),
             ),
           ),
@@ -531,6 +532,7 @@ void main() {
                 ],
                 enableTextSelection: true,
                 tokenFadeInDuration: Duration.zero,
+                tokenCompaction: AnimatedMarkdownTokenCompaction.disabled,
               ),
             ),
           ),
@@ -557,6 +559,7 @@ void main() {
               body: StreamingMarkdownRenderView(
                 padding: const EdgeInsets.all(16),
                 tokenFadeInDuration: Duration.zero,
+                tokenCompaction: AnimatedMarkdownTokenCompaction.disabled,
                 markdownTheme: _goldenMarkdownTheme,
                 nodes: _allSupportedBlockNodes(),
               ),

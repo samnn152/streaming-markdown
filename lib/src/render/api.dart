@@ -43,6 +43,21 @@ typedef AnimatedMarkdownBlockBuilder = StreamingMarkdownBlockBuilder;
 /// Preferred public name for block override context.
 typedef AnimatedMarkdownBlockContext = StreamingMarkdownBlockBuildContext;
 
+/// Controls whether animated word tokens are merged back into static text after
+/// their reveal animation has completed.
+enum AnimatedMarkdownTokenCompaction {
+  /// Keep the per-token widget spans for the lifetime of the rendered block.
+  disabled,
+
+  /// Merge settled tokens only when the renderer can do so without changing
+  /// custom token animation or debug-token behavior.
+  automatic,
+
+  /// Merge settled tokens whenever possible, including when a custom token
+  /// animation builder is supplied.
+  always,
+}
+
 /// Context object passed to [StreamingMarkdownBlockBuilder].
 class StreamingMarkdownBlockBuildContext {
   const StreamingMarkdownBlockBuildContext({

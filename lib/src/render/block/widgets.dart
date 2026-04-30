@@ -20,6 +20,7 @@ extension _StreamingMarkdownBlockWidgets on StreamingMarkdownRenderView {
     final TextStyle baseStyle = markdownTheme.paragraphTextStyle ??
         Theme.of(context).textTheme.bodyLarge ??
         const TextStyle(fontSize: 16);
+    final bool compacted = _TokenCompactionScope.isCompacted(context);
     final Duration tokenFadeDuration = _resolvedTokenFadeInDuration();
     final _RevealScheduleScope? scheduleScope = _RevealScheduleScope.maybeOf(
       context,
@@ -39,19 +40,21 @@ extension _StreamingMarkdownBlockWidgets on StreamingMarkdownRenderView {
           children: [
             SizedBox(
               width: 28,
-              child: _FadeInTokenHost(
-                initialDelay: tokenScheduleOrigin == null
-                    ? resolvedTokenStep * tokenStartIndex
-                    : Duration.zero,
-                scheduledStart: tokenScheduleOrigin?.add(
-                  resolvedTokenStep * tokenStartIndex,
-                ),
-                duration: tokenFadeDuration,
-                curve: tokenFadeInCurve,
-                animationBuilder: tokenAnimationBuilder,
-                onFadeInEnd: onTokenFadeInEnd,
-                child: _buildListMarker(item, baseStyle),
-              ),
+              child: compacted
+                  ? _buildListMarker(item, baseStyle)
+                  : _FadeInTokenHost(
+                      initialDelay: tokenScheduleOrigin == null
+                          ? resolvedTokenStep * tokenStartIndex
+                          : Duration.zero,
+                      scheduledStart: tokenScheduleOrigin?.add(
+                        resolvedTokenStep * tokenStartIndex,
+                      ),
+                      duration: tokenFadeDuration,
+                      curve: tokenFadeInCurve,
+                      animationBuilder: tokenAnimationBuilder,
+                      onFadeInEnd: onTokenFadeInEnd,
+                      child: _buildListMarker(item, baseStyle),
+                    ),
             ),
             Expanded(
               child: _buildInlineMarkdown(
@@ -208,6 +211,7 @@ extension _StreamingMarkdownBlockWidgets on StreamingMarkdownRenderView {
     final DateTime? tokenScheduleOrigin = scheduleScope?.revealedAt;
     final Duration resolvedTokenStep =
         scheduleScope?.tokenArrivalDelay ?? tokenStaggerDelay;
+    final bool compacted = _TokenCompactionScope.isCompacted(context);
 
     final List<InlineSpan> spans = <InlineSpan>[];
     _appendTokenizedTextSpans(
@@ -220,7 +224,7 @@ extension _StreamingMarkdownBlockWidgets on StreamingMarkdownRenderView {
       tokenStaggerDelay: resolvedTokenStep,
       tokenScheduleOrigin: tokenScheduleOrigin,
       tokenAnimationBuilder: tokenAnimationBuilder,
-      animatePerWord: true,
+      animatePerWord: !compacted,
     );
 
     return RichText(
