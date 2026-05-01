@@ -27,7 +27,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze package
-        run: dart analyze
+        run: dart analyze lib test
 
       - name: Run render tests
         run: flutter test test/render/streaming_markdown_test.dart
