@@ -99,6 +99,7 @@ flutter:
     platforms:
       android:
         ffiPlugin: true
+        package: com.hider152.animated_streaming_markdown
         pluginClass: AnimatedStreamingMarkdownPlugin
       ios:
         ffiPlugin: true
