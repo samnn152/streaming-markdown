@@ -495,12 +495,12 @@ void main() {
     );
     final Offset position = paragraph.localToGlobal(const Offset(28, 8));
 
+    final TestGesture gesture = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+    );
+    addTearDown(gesture.removePointer);
     for (int i = 0; i < 2; i++) {
-      final TestGesture gesture = await tester.startGesture(
-        position,
-        kind: PointerDeviceKind.mouse,
-      );
-      addTearDown(gesture.removePointer);
+      await gesture.down(position);
       await gesture.up();
       await tester.pump(const Duration(milliseconds: 40));
     }
@@ -532,12 +532,12 @@ void main() {
     );
     final Offset position = paragraph.localToGlobal(const Offset(28, 8));
 
+    final TestGesture gesture = await tester.createGesture(
+      kind: PointerDeviceKind.mouse,
+    );
+    addTearDown(gesture.removePointer);
     for (int i = 0; i < 3; i++) {
-      final TestGesture gesture = await tester.startGesture(
-        position,
-        kind: PointerDeviceKind.mouse,
-      );
-      addTearDown(gesture.removePointer);
+      await gesture.down(position);
       await gesture.up();
       await tester.pump(const Duration(milliseconds: 40));
     }
