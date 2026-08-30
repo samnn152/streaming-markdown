@@ -92,7 +92,9 @@ jobs:
         run: flutter build web --wasm
 
       - name: Validate package
-        run: flutter pub publish --dry-run
+        run: |
+          git checkout -- .
+          flutter pub publish --dry-run
 
   selection-integration:
     name: Selection platform matrix
