@@ -27,7 +27,7 @@ jobs:
           "$RUNNER_TEMP/flutter-3.10.7/bin/flutter" --version
 
       - name: Install package dependencies
-        run: flutter pub get --no-example
+        run: dart pub get
 
       - name: Analyze package
         run: dart analyze
@@ -47,7 +47,9 @@ jobs:
 
       - name: Build Flutter web example
         working-directory: example
-        run: flutter build web
+        run: |
+          dart pub get
+          flutter build web
 
   test:
     name: Test tagged release

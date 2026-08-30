@@ -1,5 +1,3 @@
-## Unreleased
-
 ## 0.3.7
 
 - Represent direct inline links as `MarkdownInlineLink` semantic snapshots,
