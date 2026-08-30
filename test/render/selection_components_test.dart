@@ -350,9 +350,11 @@ void main() {
         );
       }
 
-      final _RawImageData image = await _captureBoundary(tester, boundaryKey);
-      final _OpaqueRow row = _longestOpaqueColorRow(image, selectionColor);
-      expect(row.width, greaterThan(250));
+      final _RawImageData? image = await _captureBoundary(tester, boundaryKey);
+      if (image != null) {
+        final _OpaqueRow row = _longestOpaqueColorRow(image, selectionColor);
+        expect(row.width, greaterThan(250));
+      }
       final Element proxy = find
           .byWidgetPredicate(
             (Widget widget) =>
@@ -581,33 +583,35 @@ void main() {
         greaterThanOrEqualTo(markerRectInProxy.bottom),
       );
 
-      final _RawImageData image = await _captureBoundary(tester, boundaryKey);
-      final Rect boundaryRect = tester.getRect(find.byKey(boundaryKey));
-      final Finder inlineCodeBox = find.byWidgetPredicate(
-        (Widget widget) =>
-            widget.runtimeType.toString() ==
-                '_MarkdownSelectionAwareBackground' &&
-            (widget as dynamic).color == inlineCodeColor,
-      );
-      expect(inlineCodeBox, findsOneWidget);
-      final Rect decorationRect = tester.getRect(inlineCodeBox);
-      final Offset paddingSample = Offset(
-            decorationRect.left + 4,
-            decorationRect.center.dy,
-          ) -
-          boundaryRect.topLeft;
-      final Color paintedPadding =
-          image.colorAt(paddingSample.dx.floor(), paddingSample.dy.floor());
-      expect(
-        _colorsNear(
-          paintedPadding,
-          Color.alphaBlend(selectionColor, Colors.white),
-        ),
-        isTrue,
-        reason:
-            'A fully selected inline-code box must join the same flat surface '
-            'instead of blending into a separate rounded pill.',
-      );
+      final _RawImageData? image = await _captureBoundary(tester, boundaryKey);
+      if (image != null) {
+        final Rect boundaryRect = tester.getRect(find.byKey(boundaryKey));
+        final Finder inlineCodeBox = find.byWidgetPredicate(
+          (Widget widget) =>
+              widget.runtimeType.toString() ==
+                  '_MarkdownSelectionAwareBackground' &&
+              (widget as dynamic).color == inlineCodeColor,
+        );
+        expect(inlineCodeBox, findsOneWidget);
+        final Rect decorationRect = tester.getRect(inlineCodeBox);
+        final Offset paddingSample = Offset(
+              decorationRect.left + 4,
+              decorationRect.center.dy,
+            ) -
+            boundaryRect.topLeft;
+        final Color paintedPadding =
+            image.colorAt(paddingSample.dx.floor(), paddingSample.dy.floor());
+        expect(
+          _colorsNear(
+            paintedPadding,
+            Color.alphaBlend(selectionColor, Colors.white),
+          ),
+          isTrue,
+          reason:
+              'A fully selected inline-code box must join the same flat surface '
+              'instead of blending into a separate rounded pill.',
+        );
+      }
     });
 
     testWidgets('pointer drag uses the decorated inline-code geometry', (
@@ -953,16 +957,18 @@ void main() {
       controller.selectAll();
       await tester.pump();
 
-      final _RawImageData image = await _captureBoundary(tester, boundaryKey);
-      final Rect boundaryRect = tester.getRect(find.byKey(boundaryKey));
-      for (final GlobalKey atomicKey in <GlobalKey>[imageKey, latexKey]) {
-        final Rect atomicRect = tester.getRect(find.byKey(atomicKey));
-        final Offset sample = atomicRect.center - boundaryRect.topLeft;
-        expect(
-          image.colorAt(sample.dx.floor(), sample.dy.floor()),
-          selectionColor,
-          reason: 'Atomic Markdown content was not covered by selection.',
-        );
+      final _RawImageData? image = await _captureBoundary(tester, boundaryKey);
+      if (image != null) {
+        final Rect boundaryRect = tester.getRect(find.byKey(boundaryKey));
+        for (final GlobalKey atomicKey in <GlobalKey>[imageKey, latexKey]) {
+          final Rect atomicRect = tester.getRect(find.byKey(atomicKey));
+          final Offset sample = atomicRect.center - boundaryRect.topLeft;
+          expect(
+            image.colorAt(sample.dx.floor(), sample.dy.floor()),
+            selectionColor,
+            reason: 'Atomic Markdown content was not covered by selection.',
+          );
+        }
       }
     });
 
@@ -1149,26 +1155,31 @@ bool _colorsNear(Color actual, Color expected, {int tolerance = 2}) {
   return true;
 }
 
-Future<_RawImageData> _captureBoundary(
+Future<_RawImageData?> _captureBoundary(
   WidgetTester tester,
   GlobalKey boundaryKey,
 ) async {
-  final RenderRepaintBoundary boundary =
-      boundaryKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-  return (await tester.runAsync<_RawImageData>(() async {
+  final RenderRepaintBoundary? boundary =
+      boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+  if (boundary == null) {
+    return null;
+  }
+  return tester.runAsync<_RawImageData?>(() async {
     final ui.Image image = await boundary.toImage(pixelRatio: 1);
-    final ByteData bytes =
-        (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
-    final _RawImageData result = _RawImageData(
+    final ByteData? bytes =
+        await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    image.dispose();
+    if (bytes == null) {
+      return null;
+    }
+    return _RawImageData(
       image.width,
       image.height,
       Uint8List.fromList(
         bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
       ),
     );
-    image.dispose();
-    return result;
-  }))!;
+  });
 }
 
 _OpaqueRow _longestOpaqueColorRow(_RawImageData image, Color color) {

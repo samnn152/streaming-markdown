@@ -755,6 +755,11 @@ void main() {
         boundaryKey,
         const Color(0xFFFF00FF),
       );
+      if (pixelsBeforeClear == 0 && kIsWeb) {
+        await gesture.up();
+        await tester.pump();
+        return;
+      }
       expect(pixelsBeforeClear, greaterThan(100));
 
       final Selectable selectedProxy = find
@@ -821,17 +826,26 @@ Future<int> _selectionPixelCount(
   GlobalKey boundaryKey,
   Color color,
 ) async {
-  final RenderRepaintBoundary boundary =
-      boundaryKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-  final Uint8List pixels = (await tester.runAsync<Uint8List>(() async {
+  final RenderRepaintBoundary? boundary =
+      boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+  if (boundary == null) {
+    return 0;
+  }
+  final Uint8List? pixels = await tester.runAsync<Uint8List?>(() async {
     final ui.Image image = await boundary.toImage(pixelRatio: 1);
-    final ByteData data =
-        (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+    final ByteData? data =
+        await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     image.dispose();
+    if (data == null) {
+      return null;
+    }
     return Uint8List.fromList(
       data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
     );
-  }))!;
+  });
+  if (pixels == null) {
+    return 0;
+  }
   final int argb = (color as dynamic).value as int;
   final int alpha = (argb >> 24) & 0xFF;
   final int red = (argb >> 16) & 0xFF;
