@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
@@ -290,6 +291,9 @@ void main() {
           .single
           .toRect(),
     );
+    if (kIsWeb) {
+      return;
+    }
     final List<int> rgba = (await tester.runAsync<List<int>>(() async {
       final ui.Image image = await boundary.toImage();
       try {

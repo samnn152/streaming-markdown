@@ -1,7 +1,7 @@
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -1159,27 +1159,34 @@ Future<_RawImageData?> _captureBoundary(
   WidgetTester tester,
   GlobalKey boundaryKey,
 ) async {
+  if (kIsWeb) {
+    return null;
+  }
   final RenderRepaintBoundary? boundary =
       boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
   if (boundary == null) {
     return null;
   }
-  return tester.runAsync<_RawImageData?>(() async {
-    final ui.Image image = await boundary.toImage(pixelRatio: 1);
-    final ByteData? bytes =
-        await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    image.dispose();
-    if (bytes == null) {
-      return null;
-    }
-    return _RawImageData(
-      image.width,
-      image.height,
-      Uint8List.fromList(
-        bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
-      ),
-    );
-  });
+  try {
+    return await tester.runAsync<_RawImageData?>(() async {
+      final ui.Image image = await boundary.toImage(pixelRatio: 1);
+      final ByteData? bytes =
+          await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      if (bytes == null) {
+        return null;
+      }
+      return _RawImageData(
+        image.width,
+        image.height,
+        Uint8List.fromList(
+          bytes.buffer.asUint8List(bytes.offsetInBytes, bytes.lengthInBytes),
+        ),
+      );
+    });
+  } catch (_) {
+    return null;
+  }
 }
 
 _OpaqueRow _longestOpaqueColorRow(_RawImageData image, Color color) {

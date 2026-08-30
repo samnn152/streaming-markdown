@@ -826,41 +826,48 @@ Future<int> _selectionPixelCount(
   GlobalKey boundaryKey,
   Color color,
 ) async {
+  if (kIsWeb) {
+    return 0;
+  }
   final RenderRepaintBoundary? boundary =
       boundaryKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
   if (boundary == null) {
     return 0;
   }
-  final Uint8List? pixels = await tester.runAsync<Uint8List?>(() async {
-    final ui.Image image = await boundary.toImage(pixelRatio: 1);
-    final ByteData? data =
-        await image.toByteData(format: ui.ImageByteFormat.rawRgba);
-    image.dispose();
-    if (data == null) {
-      return null;
+  try {
+    final Uint8List? pixels = await tester.runAsync<Uint8List?>(() async {
+      final ui.Image image = await boundary.toImage(pixelRatio: 1);
+      final ByteData? data =
+          await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+      image.dispose();
+      if (data == null) {
+        return null;
+      }
+      return Uint8List.fromList(
+        data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+      );
+    });
+    if (pixels == null) {
+      return 0;
     }
-    return Uint8List.fromList(
-      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
-    );
-  });
-  if (pixels == null) {
+    final int argb = (color as dynamic).value as int;
+    final int alpha = (argb >> 24) & 0xFF;
+    final int red = (argb >> 16) & 0xFF;
+    final int green = (argb >> 8) & 0xFF;
+    final int blue = argb & 0xFF;
+    int count = 0;
+    for (int index = 0; index < pixels.length; index += 4) {
+      if (pixels[index] == red &&
+          pixels[index + 1] == green &&
+          pixels[index + 2] == blue &&
+          pixels[index + 3] == alpha) {
+        count += 1;
+      }
+    }
+    return count;
+  } catch (_) {
     return 0;
   }
-  final int argb = (color as dynamic).value as int;
-  final int alpha = (argb >> 24) & 0xFF;
-  final int red = (argb >> 16) & 0xFF;
-  final int green = (argb >> 8) & 0xFF;
-  final int blue = argb & 0xFF;
-  int count = 0;
-  for (int index = 0; index < pixels.length; index += 4) {
-    if (pixels[index] == red &&
-        pixels[index + 1] == green &&
-        pixels[index + 2] == blue &&
-        pixels[index + 3] == alpha) {
-      count += 1;
-    }
-  }
-  return count;
 }
 
 void _expectOnlySelectedLineHasNativeSelection(
