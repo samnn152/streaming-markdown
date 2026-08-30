@@ -58,7 +58,7 @@ void HandleMethodCall(FlMethodChannel*, FlMethodCall* call, gpointer) {
       }
     }
   }
-  fl_method_call_respond(call, response);
+  fl_method_call_respond(call, response, nullptr);
 }
 
 }  // namespace
