@@ -92,11 +92,11 @@ stable. The text-scaling adapter must retain the linear `textScaleFactor` path
 on 3.10 and use nonlinear `TextScaler` when the newer SDK exposes it.
 
 The Flutter 3.10 CI job resolves the root package and example with
-`dart pub get`. The example Android host uses the modern Gradle
-Kotlin DSL template, which Flutter 3.10 cannot identify, while the package's
-Android plugin metadata remains compatible with v2-embedding apps from that
-SDK. The same legacy job still builds the example for Web after the package
-analyze and test gates, so Dart/widget compatibility is not skipped.
+`flutter pub get`. The example Android host uses the standard Gradle
+Groovy template with v2 embedding metadata, which Flutter 3.10 and modern
+Flutter releases can identify cleanly. The same legacy job builds the
+example for Web after the package analyze and test gates, so Dart/widget
+compatibility is verified.
 
 On native release runners, smoke-test rich copy on Android, iOS, macOS,
 Windows, and Linux by pasting into a rich-text-capable receiver. On Web, test

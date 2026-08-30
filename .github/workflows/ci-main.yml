@@ -23,10 +23,11 @@ jobs:
             https://github.com/flutter/flutter.git \
             "$RUNNER_TEMP/flutter-3.10.7"
           echo "$RUNNER_TEMP/flutter-3.10.7/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/flutter-3.10.7/bin/flutter" precache --universal
           "$RUNNER_TEMP/flutter-3.10.7/bin/flutter" --version
 
       - name: Install package dependencies
-        run: dart pub get
+        run: flutter pub get
 
       - name: Verify committed WASM parser assets
         run: bash tool/verify_wasm_assets.sh
@@ -49,9 +50,7 @@ jobs:
 
       - name: Build Flutter web example
         working-directory: example
-        run: |
-          dart pub get
-          flutter build web
+        run: flutter build web
 
   test:
     name: Analyze and test package
