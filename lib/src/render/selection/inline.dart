@@ -60,6 +60,70 @@ extension _StreamingMarkdownSelectionInlineBuilder
     );
   }
 
+  /// Builds an inline semantic segment when the rendered markdown is embedded
+  /// inside block syntax (heading markers, setext delimiters, and similar
+  /// wrappers). Keeping the source prefix/suffix in the first and last pieces
+  /// makes visual and source offsets describe the same complete block.
+  _MarkdownSelectionSegment _embeddedInlineSelectionSegment(
+    String visualMarkdown, {
+    required String sourceMarkdown,
+    required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
+    bool preserveBlockMarkdownOnPartial = false,
+  }) {
+    final _MarkdownSelectionSegment inline = _inlineSelectionSegment(
+      visualMarkdown,
+      markdownText: visualMarkdown,
+      linkReferences: linkReferences,
+      footnoteNumbers: footnoteNumbers,
+    );
+    final int embeddedStart = sourceMarkdown.indexOf(visualMarkdown);
+    final String reconstructedInline = inline.pieces
+        .map((_MarkdownSelectionPiece piece) => piece.markdownText)
+        .join();
+    if (embeddedStart < 0 || reconstructedInline != visualMarkdown) {
+      return _MarkdownSelectionSegment.plain(
+        plainText: inline.plainText,
+        markdownText: sourceMarkdown,
+        preserveBlockMarkdownOnPartial: preserveBlockMarkdownOnPartial,
+      );
+    }
+    if (inline.pieces.isEmpty) {
+      return _MarkdownSelectionSegment.plain(
+        plainText: '',
+        markdownText: sourceMarkdown,
+        preserveBlockMarkdownOnPartial: preserveBlockMarkdownOnPartial,
+      );
+    }
+
+    final List<_MarkdownSelectionPiece> pieces = inline.pieces
+        .map(
+          (_MarkdownSelectionPiece piece) => _MarkdownSelectionPiece(
+            plainText: piece.plainText,
+            markdownText: piece.markdownText,
+          ),
+        )
+        .toList(growable: false);
+    final _MarkdownSelectionPiece first = pieces.first;
+    pieces[0] = _MarkdownSelectionPiece(
+      plainText: first.plainText,
+      markdownText:
+          '${sourceMarkdown.substring(0, embeddedStart)}${first.markdownText}',
+    );
+    final int embeddedEnd = embeddedStart + visualMarkdown.length;
+    final _MarkdownSelectionPiece last = pieces.last;
+    pieces[pieces.length - 1] = _MarkdownSelectionPiece(
+      plainText: last.plainText,
+      markdownText:
+          '${last.markdownText}${sourceMarkdown.substring(embeddedEnd)}',
+    );
+    return _MarkdownSelectionSegment(
+      pieces: pieces,
+      fallbackMarkdownText: sourceMarkdown,
+      preserveBlockMarkdownOnPartial: preserveBlockMarkdownOnPartial,
+    );
+  }
+
   int _inlineSelectionPlainTextLength(
     String text, {
     required Map<String, String> linkReferences,

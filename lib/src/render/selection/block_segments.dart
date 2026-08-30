@@ -96,9 +96,34 @@ extension _StreamingMarkdownSelectionBlockSegments
     return '$indent$marker$task ';
   }
 
-  _MarkdownSelectionSegment _quoteSelectionSegment(MarkdownRenderNode node) {
+  _MarkdownSelectionSegment _quoteSelectionSegment(
+    MarkdownRenderNode node, {
+    required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
+  }) {
     final String raw = _normalizedRaw(node.raw);
-    final String plain = _quoteText(node);
+    final String quoteMarkdown = _quoteText(node);
+    final _CalloutData? callout = _parseCallout(quoteMarkdown);
+    final String plain;
+    if (callout == null) {
+      plain = _inlineSelectionPlainText(
+        quoteMarkdown,
+        linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
+      );
+    } else {
+      final String title = _inlineSelectionPlainText(
+        callout.title,
+        linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
+      );
+      final String body = _inlineSelectionPlainText(
+        callout.body,
+        linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
+      );
+      plain = body.isEmpty ? title : '$title\n$body';
+    }
     return _MarkdownSelectionSegment(
       pieces: <_MarkdownSelectionPiece>[
         _MarkdownSelectionPiece(plainText: plain, markdownText: raw),

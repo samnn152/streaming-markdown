@@ -105,6 +105,21 @@ extension _StreamingMarkdownBlockWidgets on StreamingMarkdownRenderView {
 
     final _CalloutData? callout = _parseCallout(text);
     final Color calloutColor = _calloutColor(callout?.kind);
+    final TextStyle bodyStyle = markdownTheme.paragraphTextStyle ??
+        Theme.of(context).textTheme.bodyLarge ??
+        const TextStyle(fontSize: 16);
+    final TextStyle calloutTitleStyle = TextStyle(
+      fontWeight: FontWeight.w700,
+      color: calloutColor,
+    );
+    final int bodyPlainTextStart = callout == null
+        ? 0
+        : _inlineSelectionPlainTextLength(
+              callout.title,
+              linkReferences: linkReferences,
+              footnoteNumbers: footnoteNumbers,
+            ) +
+            (callout.body.isEmpty ? 0 : 1);
 
     return Container(
       width: double.infinity,
@@ -121,11 +136,13 @@ extension _StreamingMarkdownBlockWidgets on StreamingMarkdownRenderView {
               children: [
                 Icon(_calloutIcon(callout.kind), size: 16, color: calloutColor),
                 const SizedBox(width: 6),
-                Text(
-                  callout.title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: calloutColor,
+                Expanded(
+                  child: _buildInlineMarkdown(
+                    context,
+                    callout.title,
+                    baseStyle: calloutTitleStyle,
+                    linkReferences: linkReferences,
+                    footnoteNumbers: footnoteNumbers,
                   ),
                 ),
               ],
@@ -135,8 +152,8 @@ extension _StreamingMarkdownBlockWidgets on StreamingMarkdownRenderView {
           _buildInlineMarkdown(
             context,
             callout?.body ?? text,
-            baseStyle: markdownTheme.paragraphTextStyle ??
-                Theme.of(context).textTheme.bodyLarge,
+            plainTextStart: bodyPlainTextStart,
+            baseStyle: bodyStyle,
             linkReferences: linkReferences,
             footnoteNumbers: footnoteNumbers,
           ),
@@ -251,16 +268,45 @@ extension _StreamingMarkdownBlockWidgets on StreamingMarkdownRenderView {
       animatePerWord: !compacted,
     );
 
+    final _MarkdownTextScale textScale = _markdownTextScaleOf(context);
+    final Widget animatedRichText = _markdownRichText(
+      textAlign: TextAlign.left,
+      textDirection: TextDirection.ltr,
+      textScale: textScale,
+      text: TextSpan(style: style, children: spans),
+    );
+
+    if (!enableTextSelection) {
+      return MouseRegion(
+        cursor: SystemMouseCursors.text,
+        child: animatedRichText,
+      );
+    }
+
+    final _MarkdownSelectionBlockRange? selectionBlockRange =
+        _MarkdownSelectionBlockVisualScope.maybeOf(context)?.blockRange;
+    final int absolutePlainTextStart =
+        selectionBlockRange?.plainRange.start ?? 0;
+    final int compactPlainTextStart =
+        selectionBlockRange?.compactRange.start ?? absolutePlainTextStart;
+    final _MarkdownInlineSelectionRegistry? inlineSelectionRegistry =
+        _MarkdownInlineSelectionRegistryScope.maybeOf(context);
+    final Color selectionColor =
+        markdownTheme.selectionColor ?? const Color(0x6658A6FF);
+
     return MouseRegion(
       cursor: SystemMouseCursors.text,
-      child: RichText(
-        textAlign: TextAlign.left,
+      child: _SelectableInlineTextProxy(
+        plainText: code,
+        absolutePlainTextStart: absolutePlainTextStart,
+        compactPlainTextStart: compactPlainTextStart,
+        text: TextSpan(text: code, style: style),
         textDirection: TextDirection.ltr,
-        textScaler: MediaQuery.textScalerOf(context),
-        selectionRegistrar:
-            enableTextSelection ? SelectionContainer.maybeOf(context) : null,
-        selectionColor: markdownTheme.selectionColor ?? const Color(0x6658A6FF),
-        text: TextSpan(style: style, children: spans),
+        textScale: textScale,
+        selectionColor: selectionColor,
+        registrar: SelectionContainer.maybeOf(context),
+        selectionRegistry: inlineSelectionRegistry,
+        child: SelectionContainer.disabled(child: animatedRichText),
       ),
     );
   }

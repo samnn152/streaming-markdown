@@ -27,8 +27,12 @@ migrate_working_dir/
 *.lock
 !/website/package-lock.json
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
 /build/
+/android/.gradle/
+/android/build/
+/android/.cxx/
 /coverage/
 test/render/artifacts/
 test/render/failures/

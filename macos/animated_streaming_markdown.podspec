@@ -1,6 +1,6 @@
 Pod::Spec.new do |s|
   s.name             = 'animated_streaming_markdown'
-  s.version          = '0.3.6'
+  s.version          = '0.3.7'
   s.summary          = 'Flutter streaming Markdown parser and renderer.'
   s.description      = <<-DESC
 Flutter markdown streaming package with native Tree-sitter parser bindings.

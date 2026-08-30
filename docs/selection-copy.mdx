@@ -5,7 +5,8 @@ description: Markdown-aware copy behavior for selected rendered content.
 
 # Selection Copy
 
-Set `enableSelection` to enable render-backed selection:
+Set `enableSelection` to enable source-backed selection. Box mode creates its
+selection host internally:
 
 ```dart
 AnimatedStreamingMarkdown(
@@ -14,8 +15,62 @@ AnimatedStreamingMarkdown(
 );
 ```
 
-When possible, copied content preserves Markdown source semantics rather than
-only visual text.
+Use the optional controller when application code needs to observe or change
+the range:
+
+```dart
+final controller = AnimatedMarkdownSelectionController();
+
+AnimatedStreamingMarkdown(
+  blocks: result.blocks,
+  enableSelection: true,
+  selectionController: controller,
+);
+
+controller.selection = const TextSelection(
+  baseOffset: 24,
+  extentOffset: 8,
+  isDirectional: true,
+);
+
+print(controller.value.selectedMarkdown);
+controller.clear();
+controller.selectAll();
+```
+
+Offsets are UTF-16 Markdown source offsets and retain their base/extent
+direction. The renderer clamps them to valid grapheme boundaries.
+
+## Sliver Selection
+
+Sliver mode keeps lazy rendering and uses an explicit coordinator around the
+scroll view:
+
+```dart
+AnimatedStreamingMarkdownSelectionArea(
+  controller: controller,
+  scrollPadding: const EdgeInsets.all(20),
+  child: CustomScrollView(
+    slivers: [
+      AnimatedStreamingMarkdown(
+        blocks: result.blocks,
+        asSliver: true,
+        enableSelection: true,
+        selectionController: controller,
+      ),
+    ],
+  ),
+);
+```
+
+One wrapper manages one Markdown renderer. A remounted sliver child receives
+its local selection from the controller source range immediately. Box mode
+does not need this wrapper.
+
+The controller keeps the Markdown source snapshot and directional
+`TextSelection` as the authority. This means copy is not reconstructed from
+the currently mounted or visible widgets, which is important for lazy slivers
+and streamed content.
 
 Supported copy behavior includes:
 
@@ -27,6 +82,35 @@ Supported copy behavior includes:
 - Tables.
 - HTML blocks.
 - Footnote references and definitions.
+- Callouts and front matter.
+- Inline and block images.
+- Inline and display LaTeX.
+
+## Clipboard Targets
+
+`selectionStrategy` controls the payload:
+
+- `plain`: rendered text with Markdown syntax removed.
+- `raw`: the selected Markdown source.
+- `rich`: HTML plus the same selection as plain text.
+
+Rich copy is wired for every supported target:
+
+| Target | Rich clipboard representation |
+| --- | --- |
+| Web | Browser HTML selection copy plus plain text |
+| Android | `ClipData` HTML and plain text |
+| iOS | `public.html` and `public.utf8-plain-text` |
+| macOS | `NSPasteboard` HTML and string types |
+| Windows | `HTML Format` and `CF_UNICODETEXT` |
+| Linux | GTK `text/html` and `text/plain` targets |
+
+Native and programmatic rich-copy operations always carry a plain-text fallback.
+If a desktop clipboard manager or native host rejects the HTML payload, the
+handler retries with plain text and does not expose `UnsupportedError` to the
+UI. Browser copy events provide both `text/html` and `text/plain` when the
+browser exposes writable clipboard data. Whether a receiving application
+chooses the HTML flavor is controlled by that host.
 
 ## Stable Drag Selection
 
@@ -36,13 +120,34 @@ while streaming appends content or an ancestor scrolls.
 
 The renderer supports:
 
+- A single continuous highlight layer per visual line, without per-token
+  background shadows.
+- Atomic selection over the real laid-out bounds of images and formulas,
+  including touch long-press selection and handles.
 - Partial text selection inside individual table cells.
 - Dragging selection across a table into blocks above or below it.
 - Vertical auto-scroll near a containing viewport edge.
 - Horizontal auto-scroll near either edge of a wide table.
+- Frame-by-frame edge scrolling with no fling after pointer-up or cancel.
+- Programmatic and keyboard endpoint reveal using `scrollPadding` and the
+  editable-text caret timing.
+- Reverse-axis and RTL-aware scroll directions.
 
-Use `selectionStrategy` to choose `plain`, `markdown`, or `rich` clipboard
-content. Further performance tuning and feature additions will follow real
-application needs and user requests.
+During a drag, the touched block leases its layout snapshot. Streaming can
+continue elsewhere; if that block changes, its endpoints remap to the new
+projection when the gesture ends.
+
+Keyboard shortcuts, context menus, browser copy events, and mobile toolbars all
+derive their payload from the controller source range. Selection stays stable
+while tokens settle or a streamed block is replaced; the active block leases
+its geometry during a drag and remaps endpoints after the gesture completes.
+
+On web and desktop, a deliberate primary click elsewhere inside the application
+dismisses a finalized range. Scrolling, changing browser tabs, and switching
+windows do not clear it; the selection remains available when focus returns.
+Refocus the renderer before using the browser keyboard-copy shortcut because
+copy-event interception is focus-dependent. If an endpoint leaves the viewport,
+its handle is hidden until that endpoint is visible again while the source
+range itself remains unchanged.
 
 See [Roadmap](/roadmap) for the current planning notes.

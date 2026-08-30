@@ -12,6 +12,7 @@ void main() {
       _node('B', 10),
     ]);
     int waitCount = 0;
+    int settledCount = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -27,6 +28,9 @@ void main() {
                 onTokenArrivalWait: () {
                   waitCount += 1;
                 },
+                onSequenceSettled: () {
+                  settledCount += 1;
+                },
               );
             },
           ),
@@ -40,6 +44,10 @@ void main() {
     await tester.pump(const Duration(milliseconds: 20));
     expect(find.text('B'), findsOneWidget);
     expect(waitCount, 1);
+    expect(settledCount, 1);
+
+    await tester.pump();
+    expect(settledCount, 1);
 
     nodes.value = <MarkdownRenderNode>[
       _node('A', 0),
@@ -49,6 +57,7 @@ void main() {
     await tester.pump();
     expect(find.text('C'), findsOneWidget);
     expect(waitCount, 2);
+    expect(settledCount, 2);
   });
 
   testWidgets('token animation pause stops scheduled block reveal', (
@@ -117,6 +126,43 @@ void main() {
 
     await tester.pump(const Duration(milliseconds: 20));
     expect(find.text('Beta'), findsOneWidget);
+  });
+
+  testWidgets('inline tokens reveal by interval while prior fade is active', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[_node('Alpha Beta Gamma', 0)],
+            padding: EdgeInsets.zero,
+            tokenArrivalDelay: const Duration(milliseconds: 20),
+            tokenFadeInDuration: const Duration(milliseconds: 200),
+            tokenFadeInCurve: Curves.linear,
+            tokenCompaction: AnimatedMarkdownTokenCompaction.disabled,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Alpha'), findsOneWidget);
+    expect(find.text('Beta'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.text('Beta'), findsOneWidget);
+    expect(find.text('Gamma'), findsNothing);
+
+    final Finder alphaOpacity = find.ancestor(
+      of: find.text('Alpha'),
+      matching: find.byType(Opacity),
+    );
+    expect(alphaOpacity, findsOneWidget);
+    expect(tester.widget<Opacity>(alphaOpacity).opacity, lessThan(1));
+
+    await tester.pump(const Duration(milliseconds: 20));
+    expect(find.text('Gamma'), findsOneWidget);
+    expect(tester.widget<Opacity>(alphaOpacity).opacity, lessThan(1));
   });
 
   testWidgets('next block waits when previous streamed block grows', (

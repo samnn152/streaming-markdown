@@ -57,20 +57,23 @@ extension _StreamingMarkdownTableAndMetadataRenderer
         scheduleScope?.tokenArrivalDelay ?? tokenArrivalDelay;
     final Color borderColor = markdownTheme.tableBorderColor ??
         Color.alphaBlend(
-          colorScheme.outline.withValues(alpha: 0.18),
+          _markdownColorWithAlpha(colorScheme.outline, 0.18),
           colorScheme.outlineVariant,
         );
     final Color headerBackground = markdownTheme.tableHeaderBackgroundColor ??
         Color.alphaBlend(
-          colorScheme.primary.withValues(alpha: 0.08),
-          colorScheme.surfaceContainerHighest,
+          _markdownColorWithAlpha(colorScheme.primary, 0.08),
+          _markdownSurfaceContainerHighest(colorScheme),
         );
     final Color bodyBackground = Color.alphaBlend(
-      colorScheme.surface.withValues(alpha: 0.92),
-      colorScheme.surfaceContainerLowest,
+      _markdownColorWithAlpha(colorScheme.surface, 0.92),
+      _markdownSurfaceContainerLowest(colorScheme),
     );
     final Color alternateRowBackground = Color.alphaBlend(
-      colorScheme.surfaceContainerLow.withValues(alpha: 0.72),
+      _markdownColorWithAlpha(
+        _markdownSurfaceContainerLow(colorScheme),
+        0.72,
+      ),
       colorScheme.surface,
     );
 
@@ -110,6 +113,9 @@ extension _StreamingMarkdownTableAndMetadataRenderer
       }
     }
 
+    final SelectionRegistrar? tableRegistrar =
+        enableTextSelection ? SelectionContainer.maybeOf(context) : null;
+
     return Align(
       alignment: Alignment.centerLeft,
       child: SizedBox(
@@ -123,39 +129,44 @@ extension _StreamingMarkdownTableAndMetadataRenderer
               BuildContext context,
               ScrollController scrollController,
             ) {
-              return SingleChildScrollView(
-                controller: scrollController,
-                scrollDirection: Axis.horizontal,
-                child: Builder(
-                  builder: (BuildContext tableContext) {
-                    final List<Widget> rowTables = _buildTableRows(
-                      tableContext,
-                      table: table,
-                      theme: theme,
-                      colorScheme: colorScheme,
-                      headerBackground: headerBackground,
-                      bodyBackground: bodyBackground,
-                      alternateRowBackground: alternateRowBackground,
-                      borderColor: borderColor,
-                      columnWidths: columnWidths,
-                      tableWidth: tableWidth,
-                      tokenScheduleOrigin: tokenScheduleOrigin,
-                      resolvedTokenStep: resolvedTokenStep,
-                      linkReferences: linkReferences,
-                      footnoteNumbers: footnoteNumbers,
-                      plainTextStarts: plainTextStarts,
-                    );
-                    return Align(
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(
-                        width: tableWidth,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: rowTables,
-                        ),
-                      ),
-                    );
-                  },
+              return SelectionContainer.disabled(
+                child: SingleChildScrollView(
+                  controller: scrollController,
+                  scrollDirection: Axis.horizontal,
+                  child: _MarkdownSelectionScrollableRegistration(
+                    child: Builder(
+                      builder: (BuildContext tableContext) {
+                        final List<Widget> rowTables = _buildTableRows(
+                          tableContext,
+                          table: table,
+                          theme: theme,
+                          colorScheme: colorScheme,
+                          headerBackground: headerBackground,
+                          bodyBackground: bodyBackground,
+                          alternateRowBackground: alternateRowBackground,
+                          borderColor: borderColor,
+                          columnWidths: columnWidths,
+                          tableWidth: tableWidth,
+                          tokenScheduleOrigin: tokenScheduleOrigin,
+                          resolvedTokenStep: resolvedTokenStep,
+                          linkReferences: linkReferences,
+                          footnoteNumbers: footnoteNumbers,
+                          plainTextStarts: plainTextStarts,
+                          tableRegistrar: tableRegistrar,
+                        );
+                        return Align(
+                          alignment: Alignment.centerLeft,
+                          child: SizedBox(
+                            width: tableWidth,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: rowTables,
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ),
               );
             },
@@ -181,6 +192,7 @@ extension _StreamingMarkdownTableAndMetadataRenderer
     required Map<String, String> linkReferences,
     required Map<String, int> footnoteNumbers,
     required List<List<int>> plainTextStarts,
+    SelectionRegistrar? tableRegistrar,
   }) {
     Widget buildStableCellContent({
       required String cell,
@@ -195,9 +207,11 @@ extension _StreamingMarkdownTableAndMetadataRenderer
           cell,
           tokenStartIndex: tokenStartIndex,
           plainTextStart: plainTextStart,
+          restrictSelectionToRevealedTokens: true,
           baseStyle: baseStyle,
           linkReferences: linkReferences,
           footnoteNumbers: footnoteNumbers,
+          customRegistrar: tableRegistrar,
         ),
       );
     }
@@ -239,48 +253,29 @@ extension _StreamingMarkdownTableAndMetadataRenderer
         children.add(
           SizedBox(
             width: columnWidths[col],
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: isHeader
-                    ? headerBackground
-                    : (bodyRowIndex.isEven
-                        ? bodyBackground
-                        : alternateRowBackground),
-                border: Border(
-                  top: isHeader
-                      ? BorderSide(color: borderColor)
-                      : BorderSide.none,
-                  bottom: BorderSide(color: borderColor),
-                  left: col == 0
-                      ? BorderSide(color: borderColor)
-                      : BorderSide.none,
-                  right: BorderSide(color: borderColor),
-                ),
-              ),
-              child: buildCellPadding(
-                cell: cell,
-                tokenStartIndex: localTokenIndex,
-                plainTextStart: rowPlainTextStarts[col],
-                baseStyle: isHeader
-                    ? theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurface,
-                        ) ??
-                        TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: colorScheme.onSurface,
-                        )
-                    : theme.textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface,
-                          height: 1.45,
-                        ) ??
-                        TextStyle(
-                          fontSize: 13,
-                          color: colorScheme.onSurface,
-                          height: 1.45,
-                        ),
-              ),
+            child: buildCellPadding(
+              cell: cell,
+              tokenStartIndex: localTokenIndex,
+              plainTextStart: rowPlainTextStarts[col],
+              baseStyle: isHeader
+                  ? theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.onSurface,
+                      ) ??
+                      TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: colorScheme.onSurface,
+                      )
+                  : theme.textTheme.bodyMedium?.copyWith(
+                        color: colorScheme.onSurface,
+                        height: 1.45,
+                      ) ??
+                      TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.onSurface,
+                        height: 1.45,
+                      ),
             ),
           ),
         );
@@ -290,10 +285,26 @@ extension _StreamingMarkdownTableAndMetadataRenderer
       final Widget rowWidget = SizedBox(
         key: ValueKey<String>('markdown_table_row_$rowIndex'),
         width: tableWidth,
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: children,
+        child: ColoredBox(
+          color: isHeader
+              ? headerBackground
+              : (bodyRowIndex.isEven ? bodyBackground : alternateRowBackground),
+          child: Table(
+            border: TableBorder(
+              top: isHeader ? BorderSide(color: borderColor) : BorderSide.none,
+              bottom: BorderSide(color: borderColor),
+              left: BorderSide(color: borderColor),
+              right: BorderSide(color: borderColor),
+              verticalInside: BorderSide(color: borderColor),
+            ),
+            columnWidths: <int, TableColumnWidth>{
+              for (int col = 0; col < columnWidths.length; col++)
+                col: FixedColumnWidth(columnWidths[col]),
+            },
+            defaultVerticalAlignment: TableCellVerticalAlignment.top,
+            children: <TableRow>[
+              TableRow(children: children),
+            ],
           ),
         ),
       );
@@ -438,5 +449,43 @@ extension _StreamingMarkdownTableAndMetadataRenderer
       }
     }
     return false;
+  }
+}
+
+Color _markdownColorWithAlpha(Color color, double alpha) {
+  final dynamic dynamicColor = color;
+  try {
+    // Color.withValues preserves wide-gamut channels on recent Flutter SDKs.
+    return dynamicColor.withValues(alpha: alpha) as Color;
+  } on NoSuchMethodError {
+    // Flutter 3.10 exposes only Color.withOpacity.
+    return dynamicColor.withOpacity(alpha) as Color;
+  }
+}
+
+Color _markdownSurfaceContainerHighest(ColorScheme colorScheme) {
+  final dynamic dynamicScheme = colorScheme;
+  try {
+    return dynamicScheme.surfaceContainerHighest as Color;
+  } on NoSuchMethodError {
+    return dynamicScheme.surfaceVariant as Color;
+  }
+}
+
+Color _markdownSurfaceContainerLowest(ColorScheme colorScheme) {
+  final dynamic dynamicScheme = colorScheme;
+  try {
+    return dynamicScheme.surfaceContainerLowest as Color;
+  } on NoSuchMethodError {
+    return colorScheme.surface;
+  }
+}
+
+Color _markdownSurfaceContainerLow(ColorScheme colorScheme) {
+  final dynamic dynamicScheme = colorScheme;
+  try {
+    return dynamicScheme.surfaceContainerLow as Color;
+  } on NoSuchMethodError {
+    return dynamicScheme.surfaceVariant as Color;
   }
 }

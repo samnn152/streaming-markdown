@@ -24,7 +24,7 @@ void main() {
         await _pumpStreamingScrollGolden(tester, scenario);
       });
     }
-  }, skip: !Platform.isMacOS);
+  }, skip: !Platform.isMacOS || Platform.environment['SKIP_GOLDENS'] == 'true');
 }
 
 Future<void> _pumpStreamingScrollGolden(
@@ -95,6 +95,9 @@ Future<void> _pumpStreamingScrollGolden(
       ),
     ),
   );
+  // Select a settled anchor so snapshots measure drift during later streaming,
+  // not the initial token fade timing of the selected block itself.
+  await tester.pumpAndSettle(const Duration(milliseconds: 50));
 
   final SelectableRegionState regionState =
       tester.state<SelectableRegionState>(find.byType(SelectableRegion));

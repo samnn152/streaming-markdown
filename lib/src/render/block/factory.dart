@@ -117,6 +117,8 @@ extension _StreamingMarkdownBlockFactory on StreamingMarkdownRenderView {
           onLinkTap: (String url) => _onLinkPressed(context, url),
           paragraphTextStyle: markdownTheme.paragraphTextStyle ??
               Theme.of(context).textTheme.bodyLarge,
+          selectionColor:
+              markdownTheme.selectionColor ?? const Color(0x6658A6FF),
         );
       case 'front_matter':
         return _buildMetadataBlock(

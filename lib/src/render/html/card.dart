@@ -5,11 +5,13 @@ class _HtmlBlockCard extends StatelessWidget {
     required this.html,
     required this.onLinkTap,
     required this.paragraphTextStyle,
+    required this.selectionColor,
   });
 
   final String html;
   final ValueChanged<String> onLinkTap;
   final TextStyle? paragraphTextStyle;
+  final Color selectionColor;
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +24,7 @@ class _HtmlBlockCard extends StatelessWidget {
       context: context,
       onLinkTap: onLinkTap,
       paragraphTextStyle: paragraphTextStyle,
+      selectionColor: selectionColor,
     );
     final List<Widget> blocks = renderer.buildBlocks(fragment.nodes);
     if (blocks.isEmpty) {

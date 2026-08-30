@@ -1,14 +1,15 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
+import 'package:animated_streaming_markdown/src/third_party/flutter_math/flutter_math.dart';
 
 void main() {
   test('library name is stable', () {
@@ -395,7 +396,7 @@ Setext title
               widget.cursor == SystemMouseCursors.click,
         ),
       ),
-      findsOneWidget,
+      findsWidgets,
     );
   });
 
@@ -941,6 +942,217 @@ Setext title
     await _copySelection(tester);
 
     expect(clipboardText, 'Inline [OpenAI](https://openai.com) link.');
+  });
+
+  testWidgets('selection preserves received paragraph text during fade', (
+    WidgetTester tester,
+  ) async {
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          final Map<dynamic, dynamic> data =
+              methodCall.arguments! as Map<dynamic, dynamic>;
+          clipboardText = data['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[_renderNode('Visible hidden future')],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            selectionStrategy: SelectionStrategy.plain,
+            tokenArrivalDelay: const Duration(seconds: 1),
+            tokenFadeInDuration: const Duration(milliseconds: 100),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final SelectableRegionState regionState =
+        tester.state<SelectableRegionState>(find.byType(SelectableRegion));
+    regionState.selectAll(SelectionChangedCause.keyboard);
+    await tester.pump();
+    await _copySelection(tester);
+
+    expect(clipboardText, 'Visible hidden future');
+  });
+
+  testWidgets('table selection excludes cells before their reveal begins', (
+    WidgetTester tester,
+  ) async {
+    String? clipboardText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall methodCall) async {
+        if (methodCall.method == 'Clipboard.setData') {
+          final Map<dynamic, dynamic> data =
+              methodCall.arguments! as Map<dynamic, dynamic>;
+          clipboardText = data['text'] as String?;
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    const String table = '| Visible | Hidden |\n'
+        '| --- | --- |\n'
+        '| Future A | Future B |';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(table, type: 'pipe_table', endRow: 2),
+            ],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            selectionStrategy: SelectionStrategy.plain,
+            tokenArrivalDelay: const Duration(seconds: 1),
+            tokenFadeInDuration: const Duration(milliseconds: 100),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final SelectableRegionState regionState =
+        tester.state<SelectableRegionState>(find.byType(SelectableRegion));
+    regionState.selectAll(SelectionChangedCause.keyboard);
+    await tester.pump();
+    await _copySelection(tester);
+
+    expect(clipboardText, 'Visible');
+  });
+
+  testWidgets('wrapped table selection paints using rendered token geometry', (
+    WidgetTester tester,
+  ) async {
+    const Color selectionColor = Color(0x6658A6FF);
+    await tester.binding.setSurfaceSize(const Size(340, 360));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    const String table = '| Task Goal | Recommended Model | Why? |\n'
+        '| --- | --- | --- |\n'
+        '| Story | Claude | Natural language |';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(table, type: 'pipe_table', endRow: 2),
+            ],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            selectionStrategy: SelectionStrategy.plain,
+            tokenArrivalDelay: Duration.zero,
+            tokenFadeInDuration: Duration.zero,
+            tokenCompaction: AnimatedMarkdownTokenCompaction.disabled,
+            markdownTheme: const StreamingMarkdownThemeData(
+              selectionColor: selectionColor,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final Rect recommendedRect = tester.getRect(find.text('Recommended'));
+    final Rect modelRect = tester.getRect(find.text('Model'));
+    expect(modelRect.top, greaterThan(recommendedRect.top));
+
+    final SelectableRegionState regionState =
+        tester.state<SelectableRegionState>(find.byType(SelectableRegion));
+    regionState.selectAll(SelectionChangedCause.keyboard);
+    await tester.pump();
+
+    final Iterable<Element> paintedBackdrops = find
+        .byWidgetPredicate(
+          (Widget widget) =>
+              widget.runtimeType.toString() == '_InlineSourceSelectionBackdrop',
+        )
+        .evaluate()
+        .where((Element element) {
+      final dynamic widget = element.widget;
+      return widget.selectionColor == selectionColor;
+    });
+    expect(paintedBackdrops, isEmpty);
+    final String highlighted = _highlightedTextForColor(tester, selectionColor);
+    expect(highlighted, contains('Recommended'));
+    expect(highlighted, contains('Model'));
+  });
+
+  testWidgets('wrapped prose selection paints using rendered token geometry', (
+    WidgetTester tester,
+  ) async {
+    const Color selectionColor = Color(0x6658A6FF);
+    await tester.binding.setSurfaceSize(const Size(300, 360));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    const String paragraph =
+        'Selected prose wraps onto following lines without drifting.';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 220,
+            child: StreamingMarkdownRenderView(
+              nodes: <MarkdownRenderNode>[_renderNode(paragraph)],
+              padding: EdgeInsets.zero,
+              enableTextSelection: true,
+              selectionStrategy: SelectionStrategy.plain,
+              tokenArrivalDelay: Duration.zero,
+              tokenFadeInDuration: Duration.zero,
+              tokenCompaction: AnimatedMarkdownTokenCompaction.disabled,
+              markdownTheme: const StreamingMarkdownThemeData(
+                selectionColor: selectionColor,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final SelectableRegionState regionState =
+        tester.state<SelectableRegionState>(find.byType(SelectableRegion));
+    regionState.selectAll(SelectionChangedCause.keyboard);
+    await tester.pump();
+
+    final Iterable<Element> paintedBackdrops = find
+        .byWidgetPredicate(
+          (Widget widget) =>
+              widget.runtimeType.toString() == '_InlineSourceSelectionBackdrop',
+        )
+        .evaluate()
+        .where((Element element) {
+      final dynamic widget = element.widget;
+      return widget.selectionColor == selectionColor;
+    });
+    expect(paintedBackdrops, isEmpty);
+    final String highlighted = _highlightedTextForColor(
+      tester,
+      selectionColor,
+    ).replaceAll(' ', '');
+    expect(highlighted, contains('Selectedprosewraps'));
   });
 
   testWidgets('copy selection preserves block markdown delimiters', (
@@ -1598,17 +1810,6 @@ Setext title
     );
     await tester.pump();
 
-    ScrollPosition horizontalPosition() {
-      for (final ScrollableState state
-          in tester.stateList<ScrollableState>(find.byType(Scrollable))) {
-        if (axisDirectionToAxis(state.position.axisDirection) ==
-            Axis.horizontal) {
-          return state.position;
-        }
-      }
-      throw StateError('No horizontal scroll position found.');
-    }
-
     final Rect tableFrame = tester
         .getRect(find.byKey(const ValueKey<String>('markdown_table_frame')));
     final RenderParagraph startParagraph =
@@ -1624,14 +1825,168 @@ Setext title
     for (int i = 0; i < 20; i += 1) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-    final double rightEdgeOffset = horizontalPosition().pixels;
+    final double rightEdgeOffset = _horizontalScrollPosition(tester).pixels;
     expect(rightEdgeOffset, greaterThan(0));
 
     await gesture.moveTo(Offset(tableFrame.left + 2, tableFrame.center.dy));
     for (int i = 0; i < 20; i += 1) {
       await tester.pump(const Duration(milliseconds: 16));
     }
-    expect(horizontalPosition().pixels, lessThan(rightEdgeOffset));
+    expect(
+      _horizontalScrollPosition(tester).pixels,
+      lessThan(rightEdgeOffset),
+    );
+    await gesture.up();
+  });
+
+  testWidgets('table corner drag advances horizontal and vertical axes',
+      (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(260, 160));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final ScrollController verticalController = ScrollController();
+    addTearDown(verticalController.dispose);
+
+    const String rawTable = '| H0 | H1 | H2 | H3 | H4 | H5 | H6 |\n'
+        '| --- | --- | --- | --- | --- | --- | --- |\n'
+        '| A0 wide | A1 wide | A2 wide | A3 wide | A4 wide | A5 wide | A6 wide |';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            height: 160,
+            child: ListView(
+              controller: verticalController,
+              children: <Widget>[
+                const SizedBox(height: 72),
+                StreamingMarkdownRenderView(
+                  nodes: <MarkdownRenderNode>[
+                    _renderNode(
+                      rawTable,
+                      type: 'pipe_table',
+                      startByte: 0,
+                      startRow: 0,
+                      endRow: 2,
+                    ),
+                    for (int i = 0; i < 12; i += 1)
+                      _renderNode(
+                        'Following block $i keeps the vertical viewport moving.',
+                        startByte: rawTable.length + 2 + i * 64,
+                        startRow: 4 + i * 2,
+                      ),
+                  ],
+                  padding: EdgeInsets.zero,
+                  enableTextSelection: true,
+                  selectionStrategy: SelectionStrategy.raw,
+                  tokenArrivalDelay: Duration.zero,
+                  tokenFadeInDuration: Duration.zero,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    Rect tableFrame = tester
+        .getRect(find.byKey(const ValueKey<String>('markdown_table_frame')));
+    final double alignDelta = tableFrame.bottom - 158;
+    if (alignDelta > 0) {
+      verticalController.jumpTo(
+        alignDelta.clamp(
+          verticalController.position.minScrollExtent,
+          verticalController.position.maxScrollExtent,
+        ),
+      );
+      await tester.pump();
+      tableFrame = tester
+          .getRect(find.byKey(const ValueKey<String>('markdown_table_frame')));
+    }
+
+    final RenderParagraph startParagraph =
+        _renderParagraphContaining(tester, 'A0 wide');
+    final TestGesture gesture = await tester.startGesture(
+      _textOffsetToHitPosition(startParagraph, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    addTearDown(gesture.removePointer);
+    await tester.pump();
+
+    final double initialVerticalOffset = verticalController.offset;
+    await gesture.moveTo(
+      Offset(
+        tableFrame.right - 2,
+        math.min(tableFrame.bottom - 2, 158),
+      ),
+    );
+    for (int i = 0; i < 8; i += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    expect(_horizontalScrollPosition(tester).pixels, greaterThan(0));
+    expect(verticalController.offset, greaterThan(initialVerticalOffset));
+    await gesture.up();
+  });
+
+  testWidgets('RTL table edge drag follows reverse horizontal axis',
+      (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(260, 220));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    const String rawTable = '| H0 | H1 | H2 | H3 | H4 | H5 | H6 |\n'
+        '| --- | --- | --- | --- | --- | --- | --- |\n'
+        '| A0 wide | A1 wide | A2 wide | A3 wide | A4 wide | A5 wide | A6 wide |';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: Scaffold(
+            body: StreamingMarkdownRenderView(
+              nodes: <MarkdownRenderNode>[
+                _renderNode(
+                  rawTable,
+                  type: 'pipe_table',
+                  startByte: 0,
+                  startRow: 0,
+                  endRow: 2,
+                ),
+              ],
+              padding: EdgeInsets.zero,
+              enableTextSelection: true,
+              selectionStrategy: SelectionStrategy.raw,
+              tokenArrivalDelay: Duration.zero,
+              tokenFadeInDuration: Duration.zero,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final ScrollPosition horizontalPosition = _horizontalScrollPosition(tester);
+    expect(horizontalPosition.axisDirection, AxisDirection.left);
+
+    final Rect tableFrame = tester
+        .getRect(find.byKey(const ValueKey<String>('markdown_table_frame')));
+    final RenderParagraph startParagraph = _visibleTableParagraph(
+      tester,
+      tableFrame,
+      contains: 'wide',
+    );
+    final TestGesture gesture = await tester.startGesture(
+      startParagraph.localToGlobal(startParagraph.size.center(Offset.zero)),
+      kind: PointerDeviceKind.mouse,
+    );
+    addTearDown(gesture.removePointer);
+    await tester.pump();
+
+    await gesture.moveTo(Offset(tableFrame.left + 2, tableFrame.center.dy));
+    for (int i = 0; i < 20; i += 1) {
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+
+    expect(horizontalPosition.pixels, greaterThan(0));
     await gesture.up();
   });
 
@@ -1783,6 +2138,112 @@ Setext title
     await tester.pump();
 
     expect(_highlightedTextForColor(tester, selectionColor), selectedText);
+  });
+
+  testWidgets('finalized animated selection remains natively draggable',
+      (WidgetTester tester) async {
+    const String selectedText = 'Stable';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                  '$selectedText selection remains draggable after release.'),
+            ],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            selectionStrategy: SelectionStrategy.plain,
+            tokenArrivalDelay: const Duration(milliseconds: 80),
+            tokenFadeInDuration: const Duration(milliseconds: 150),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    final TestGesture gesture = await tester.startGesture(
+      _textWidgetHitPosition(tester, selectedText),
+      kind: PointerDeviceKind.mouse,
+    );
+    addTearDown(gesture.removePointer);
+    await tester.pump();
+    await gesture.moveTo(
+      _textWidgetHitPosition(tester, selectedText, end: true),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    await tester.pump();
+
+    expect(_proxySelectedText(tester), contains(selectedText));
+  });
+
+  testWidgets('replacement drag moves the flat selection before release',
+      (WidgetTester tester) async {
+    const Color selectionColor = Color(0x6658A6FF);
+    const String firstText = 'Stable';
+    const String replacementText = 'replacement';
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode(
+                '$firstText $replacementText remains easy to select.',
+              ),
+            ],
+            padding: EdgeInsets.zero,
+            enableTextSelection: true,
+            selectionStrategy: SelectionStrategy.plain,
+            tokenArrivalDelay: const Duration(milliseconds: 40),
+            tokenFadeInDuration: const Duration(milliseconds: 160),
+            tokenCompaction: AnimatedMarkdownTokenCompaction.disabled,
+            markdownTheme: const StreamingMarkdownThemeData(
+              selectionColor: selectionColor,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+
+    TestGesture gesture = await tester.startGesture(
+      _textWidgetHitPosition(tester, firstText),
+      kind: PointerDeviceKind.mouse,
+    );
+    addTearDown(gesture.removePointer);
+    await tester.pump();
+    await gesture.moveTo(
+      _textWidgetHitPosition(tester, firstText, end: true),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(_highlightedTextForColor(tester, selectionColor), firstText);
+
+    gesture = await tester.startGesture(
+      _textWidgetHitPosition(tester, replacementText),
+      kind: PointerDeviceKind.mouse,
+    );
+    addTearDown(gesture.removePointer);
+    await tester.pump();
+    await gesture.moveTo(
+      _textWidgetHitPosition(tester, replacementText, end: true),
+    );
+    await tester.pump();
+
+    expect(
+      _highlightedTextForColor(tester, selectionColor),
+      replacementText,
+    );
+
+    await gesture.up();
+    await tester.pump();
+    await tester.pump();
+
+    expect(_proxySelectedText(tester), contains(replacementText));
+    expect(_highlightedTextForColor(tester, selectionColor), replacementText);
   });
 
   testWidgets('locked scroll selection can be replaced by a new drag selection',
@@ -2298,6 +2759,37 @@ class Greeter {
     },
   );
 
+  testWidgets('app lifecycle changes do not restart a revealed token', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: StreamingMarkdownRenderView(
+            nodes: <MarkdownRenderNode>[
+              _renderNode('Lifecycle token remains generated'),
+            ],
+            padding: EdgeInsets.zero,
+            tokenFadeInDuration: const Duration(seconds: 2),
+            tokenFadeInCurve: Curves.linear,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 700));
+    final double beforePause = _activeTokenOpacity(tester);
+    expect(beforePause, greaterThan(0));
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    final double afterResume = _activeTokenOpacity(tester);
+
+    expect(afterResume, greaterThanOrEqualTo(beforePause - 0.2));
+  });
+
   testWidgets('reordered block layout keeps existing token animation state', (
     WidgetTester tester,
   ) async {
@@ -2443,7 +2935,7 @@ class Greeter {
             return MediaQuery(
               data: MediaQueryData(size: viewportSize),
               child: Scaffold(
-                body: SelectionArea(
+                body: AnimatedStreamingMarkdownSelectionArea(
                   child: CustomScrollView(
                     slivers: <Widget>[
                       StreamingMarkdownRenderView(
@@ -2549,6 +3041,36 @@ class Greeter {
 
     expect(find.byType(Math), findsNWidgets(2));
     expect(find.textContaining(r'$x^2 + y^2 = z^2$'), findsNothing);
+  });
+
+  testWidgets('stretched LaTeX keeps finite layout and baseline geometry',
+      (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnimatedStreamingMarkdown.fromMarkdown(
+            markdown: r'''
+Before $\left(\frac{\sqrt{x^2 + 1}}{\sum_{i=1}^{n} i}\right)$ after.
+
+$$\sqrt{\frac{a+b}{c+d}} + \left[\sum_{k=0}^{m} k^2\right]$$
+''',
+            tokenAnimationDuration: Duration.zero,
+          ),
+        ),
+      ),
+    );
+
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(Math), findsNWidgets(2));
+    expect(find.byType(SelectableText), findsNothing);
+    for (int index = 0; index < 2; index++) {
+      final Size size = tester.getSize(find.byType(Math).at(index));
+      expect(size.width.isFinite, isTrue);
+      expect(size.height.isFinite, isTrue);
+      expect(size, isNot(Size.zero));
+    }
   });
 
   testWidgets('footnotes render as numbered references and definitions', (
@@ -3280,7 +3802,10 @@ Các công thức Laplace:
     );
     final Offset textCenter = tester.getCenter(find.text('Open'));
 
-    expect((checkboxCenter.dy - textCenter.dy).abs(), lessThanOrEqualTo(2));
+    // Flutter 3.10 and current stable use slightly different Material icon and
+    // text metrics. Four logical pixels keeps the visual centers on the same
+    // line while avoiding an engine-version-specific assertion.
+    expect((checkboxCenter.dy - textCenter.dy).abs(), lessThanOrEqualTo(4));
   });
 }
 
@@ -3388,7 +3913,7 @@ List<double> _activeTextSpanOpacities(InlineSpan span) {
   if (span is TextSpan) {
     final Color? color = span.style?.color;
     if (color != null) {
-      final double opacity = color.a;
+      final double opacity = _colorOpacity(color);
       if (opacity > 0 && opacity < 1) {
         values.add(opacity);
       }
@@ -3398,6 +3923,15 @@ List<double> _activeTextSpanOpacities(InlineSpan span) {
     }
   }
   return values;
+}
+
+double _colorOpacity(Color color) {
+  final dynamic dynamicColor = color;
+  try {
+    return dynamicColor.a as double;
+  } on NoSuchMethodError {
+    return (dynamicColor.alpha as int) / 255;
+  }
 }
 
 double _opacityByKey(WidgetTester tester, Key key) {
@@ -3471,6 +4005,23 @@ int _inlineSelectionProxyCount(WidgetTester tester) {
       .length;
 }
 
+String _proxySelectedText(WidgetTester tester) {
+  final StringBuffer selected = StringBuffer();
+  for (final Element element in find
+      .byWidgetPredicate(
+        (Widget widget) =>
+            widget.runtimeType.toString() == '_SelectableInlineTextProxy',
+      )
+      .evaluate()) {
+    final RenderObject? renderObject = element.renderObject;
+    if (renderObject is Selectable) {
+      final Selectable selectable = renderObject as Selectable;
+      selected.write(selectable.getSelectedContent()?.plainText ?? '');
+    }
+  }
+  return selected.toString();
+}
+
 int _widgetSpanCount(InlineSpan span) {
   if (span is WidgetSpan) {
     return 1;
@@ -3513,39 +4064,61 @@ RenderParagraph _renderParagraphContaining(
   throw StateError('No RichText RenderParagraph contains "$plainText".');
 }
 
+ScrollPosition _horizontalScrollPosition(WidgetTester tester) {
+  for (final ScrollableState state
+      in tester.stateList<ScrollableState>(find.byType(Scrollable))) {
+    if (axisDirectionToAxis(state.position.axisDirection) == Axis.horizontal) {
+      return state.position;
+    }
+  }
+  throw StateError('No horizontal scroll position found.');
+}
+
+RenderParagraph _visibleTableParagraph(
+  WidgetTester tester,
+  Rect tableFrame, {
+  required String contains,
+}) {
+  for (final Element element in find.byType(RichText).evaluate()) {
+    final RichText widget = element.widget as RichText;
+    if (!widget.text.toPlainText().contains(contains)) {
+      continue;
+    }
+    final RenderParagraph paragraph = element.renderObject! as RenderParagraph;
+    final Rect paragraphFrame =
+        paragraph.localToGlobal(Offset.zero) & paragraph.size;
+    if (tableFrame.contains(paragraphFrame.center)) {
+      return paragraph;
+    }
+  }
+  throw StateError(
+    'No visible selectable table paragraph contains "$contains".',
+  );
+}
+
 String _highlightedTextForColor(WidgetTester tester, Color color) {
   final StringBuffer highlighted = StringBuffer();
   for (final Element element in find
       .byWidgetPredicate(
         (Widget widget) =>
-            widget.runtimeType.toString() == '_InlineSourceSelectionBackdrop',
+            widget.runtimeType.toString() == '_SelectableInlineTextProxy',
       )
       .evaluate()) {
     final dynamic widget = element.widget;
-    if (widget.selectionColor == color) {
-      highlighted.write(widget.selectedText as String);
+    final dynamic renderObject = element.renderObject;
+    final TextRange? paintRange =
+        renderObject.debugPaintSelectionRange as TextRange?;
+    if (widget.selectionColor == color && paintRange != null) {
+      final String plainText = widget.plainText as String;
+      highlighted.write(
+        plainText.substring(
+          paintRange.start.clamp(0, plainText.length),
+          paintRange.end.clamp(0, plainText.length),
+        ),
+      );
     }
-  }
-  if (highlighted.isNotEmpty) {
-    return highlighted.toString();
-  }
-  for (final RichText richText in tester.widgetList<RichText>(
-    find.byType(RichText),
-  )) {
-    _collectHighlightedText(richText.text, color, highlighted);
   }
   return highlighted.toString();
-}
-
-void _collectHighlightedText(InlineSpan span, Color color, StringBuffer out) {
-  if (span is TextSpan) {
-    if (span.style?.backgroundColor == color && span.text != null) {
-      out.write(span.text);
-    }
-    for (final InlineSpan child in span.children ?? const <InlineSpan>[]) {
-      _collectHighlightedText(child, color, out);
-    }
-  }
 }
 
 Offset _textOffsetToPosition(RenderParagraph paragraph, int offset) {

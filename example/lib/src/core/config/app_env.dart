@@ -38,9 +38,9 @@ final class AppEnv {
       ChatProvider.openai => _string('OPENAI_API_KEY'),
       ChatProvider.anthropic => _string('ANTHROPIC_API_KEY'),
       ChatProvider.gemini => _string(
-        'GEMINI_API_KEY',
-        fallback: _string('GOOGLE_API_KEY'),
-      ),
+          'GEMINI_API_KEY',
+          fallback: _string('GOOGLE_API_KEY'),
+        ),
       ChatProvider.xai => _string('XAI_API_KEY'),
     };
   }
@@ -62,8 +62,8 @@ final class AppEnv {
       'CHAT_MODEL' => const String.fromEnvironment('CHAT_MODEL'),
       'CHAT_BASE_URL' => const String.fromEnvironment('CHAT_BASE_URL'),
       'CHAT_SYSTEM_PROMPT' => const String.fromEnvironment(
-        'CHAT_SYSTEM_PROMPT',
-      ),
+          'CHAT_SYSTEM_PROMPT',
+        ),
       'OPENAI_API_KEY' => const String.fromEnvironment('OPENAI_API_KEY'),
       'ANTHROPIC_API_KEY' => const String.fromEnvironment('ANTHROPIC_API_KEY'),
       'GEMINI_API_KEY' => const String.fromEnvironment('GEMINI_API_KEY'),
@@ -71,7 +71,8 @@ final class AppEnv {
       'GEMINI_MODEL' => const String.fromEnvironment('GEMINI_MODEL'),
       'XAI_API_KEY' => const String.fromEnvironment('XAI_API_KEY'),
       _ => '',
-    }.trim();
+    }
+        .trim();
     return fromDefine.isNotEmpty ? fromDefine : fallback;
   }
 

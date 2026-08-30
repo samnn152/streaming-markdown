@@ -120,8 +120,8 @@ class StreamingMarkdownLatexBuildContext {
   final Widget fallbackWidget;
 }
 
-/// Custom builder hook for LaTeX math rendered with the KaTeX-compatible
-/// `flutter_math_fork` engine.
+/// Custom builder hook for LaTeX math rendered with the embedded
+/// KaTeX-compatible engine.
 typedef StreamingMarkdownLatexBuilder = Widget Function(
   BuildContext context,
   StreamingMarkdownLatexBuildContext latex,
@@ -138,6 +138,221 @@ typedef AnimatedMarkdownImageBuilder = StreamingMarkdownImageBuilder;
 
 /// Preferred LaTeX builder name for [AnimatedStreamingMarkdown].
 typedef AnimatedMarkdownLatexBuilder = StreamingMarkdownLatexBuilder;
+
+/// Chooses the temporary visible text for an incomplete streaming link.
+///
+/// Returning an empty string suppresses the construct until more source
+/// arrives. The default renderer shows [MarkdownInlineLink.destination] once
+/// it is non-empty and otherwise returns an empty string.
+typedef StreamingMarkdownIncompleteLinkTextBuilder = String Function(
+  MarkdownInlineLink link,
+);
+
+/// Preferred incomplete-link projection hook for
+/// [AnimatedStreamingMarkdown].
+typedef AnimatedMarkdownIncompleteLinkTextBuilder
+    = StreamingMarkdownIncompleteLinkTextBuilder;
+
+/// Adds source-backed selection geometry to a fully custom Markdown widget.
+///
+/// Custom image and LaTeX builders are already selectable because the renderer
+/// keeps their semantic wrapper outside the builder. Use this widget when a
+/// [StreamingMarkdownBlockBuilder] replaces
+/// [StreamingMarkdownBlockBuildContext.defaultWidget] with a non-text object.
+///
+/// [plainText] must be the plain-text projection represented by [child] inside
+/// the current block. [plainTextStart] locates it within that block projection.
+/// The default constructor keeps the original atomic behavior. Use
+/// [AnimatedMarkdownSelectable.text] for a `Text` or `SelectableText` child,
+/// or [AnimatedMarkdownSelectable.fragments] with
+/// [AnimatedMarkdownSelectionFragment] for a composite custom object. Copy
+/// always remains backed by the coordinator's original Markdown source.
+class AnimatedMarkdownSelectable extends StatelessWidget {
+  /// Creates an atomic selectable wrapper for custom Markdown content.
+  const AnimatedMarkdownSelectable({
+    super.key,
+    required this.plainText,
+    required this.child,
+    this.plainTextStart = 0,
+    this.textStyle,
+    this.selectionColor = const Color(0x6658A6FF),
+  }) : _mode = _AnimatedMarkdownSelectableMode.atomic;
+
+  /// Creates character-level selection backed by the rendered text geometry.
+  ///
+  /// The descendant may be Flutter's [Text], [RichText], or [SelectableText].
+  /// Its visible plain text must equal [plainText]. The wrapper owns selection,
+  /// so a nested `SelectableText` does not create a second independent range.
+  const AnimatedMarkdownSelectable.text({
+    super.key,
+    required this.plainText,
+    required this.child,
+    this.plainTextStart = 0,
+    this.textStyle,
+    this.selectionColor = const Color(0x6658A6FF),
+  }) : _mode = _AnimatedMarkdownSelectableMode.text;
+
+  /// Creates character-level selection for a composite custom object.
+  ///
+  /// Descendant text regions declare their local offsets with
+  /// [AnimatedMarkdownSelectionFragment]. Non-text descendants remain usable
+  /// and the declared fragments participate in one Markdown selection.
+  const AnimatedMarkdownSelectable.fragments({
+    super.key,
+    required this.plainText,
+    required this.child,
+    this.plainTextStart = 0,
+    this.textStyle,
+    this.selectionColor = const Color(0x6658A6FF),
+  }) : _mode = _AnimatedMarkdownSelectableMode.fragments;
+
+  /// Plain-text meaning represented by [child].
+  final String plainText;
+
+  /// Offset of [plainText] in the current block's plain-text projection.
+  final int plainTextStart;
+
+  /// Geometry style used for the hidden semantic text layout.
+  final TextStyle? textStyle;
+
+  /// Selection highlight color.
+  final Color selectionColor;
+
+  /// Custom visual content.
+  final Widget child;
+
+  final _AnimatedMarkdownSelectableMode _mode;
+
+  @override
+  Widget build(BuildContext context) {
+    final _MarkdownSelectionBlockRange? blockRange =
+        _MarkdownSelectionBlockVisualScope.maybeOf(context)?.blockRange;
+    final SelectionRegistrar? registrar = SelectionContainer.maybeOf(context);
+    if (plainText.isEmpty || blockRange == null || registrar == null) {
+      return child;
+    }
+
+    final int blockPlainTextLength =
+        blockRange.plainRange.end - blockRange.plainRange.start;
+    final int localStart = plainTextStart.clamp(0, blockPlainTextLength);
+    final int absoluteStart = blockRange.plainRange.start + localStart;
+    final int compactStart = blockRange.compactRange.start + localStart;
+    final TextStyle resolvedStyle =
+        textStyle ?? DefaultTextStyle.of(context).style;
+    Widget visualChild = child;
+    if (_mode == _AnimatedMarkdownSelectableMode.text) {
+      // Delegate gestures to the surrounding Markdown SelectionArea. A nested
+      // RenderEditable remains available for exact character geometry, but it
+      // cannot create a second independent native highlight. Composite objects
+      // with interactive siblings should use the fragments constructor.
+      visualChild = AbsorbPointer(child: visualChild);
+      visualChild = _MarkdownSelectableTextSpan(
+        semanticRange: TextRange(start: 0, end: plainText.length),
+        text: plainText,
+        paintSelectionLocally: true,
+        child: visualChild,
+      );
+    } else if (_mode == _AnimatedMarkdownSelectableMode.fragments) {
+      visualChild = _AnimatedMarkdownSelectionFragmentScope(
+        plainTextLength: plainText.length,
+        child: visualChild,
+      );
+    }
+    return MouseRegion(
+      cursor: SystemMouseCursors.text,
+      child: _SelectableInlineTextProxy(
+        plainText: plainText,
+        absolutePlainTextStart: absoluteStart,
+        compactPlainTextStart: compactStart,
+        text: TextSpan(text: plainText, style: resolvedStyle),
+        textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+        textScale: _markdownTextScaleOf(context),
+        selectionColor: selectionColor,
+        registrar: registrar,
+        selectionRegistry:
+            _MarkdownInlineSelectionRegistryScope.maybeOf(context),
+        atomic: _mode == _AnimatedMarkdownSelectableMode.atomic,
+        child: SelectionContainer.disabled(child: visualChild),
+      ),
+    );
+  }
+}
+
+enum _AnimatedMarkdownSelectableMode { atomic, text, fragments }
+
+/// Declares one character-selectable region inside
+/// [AnimatedMarkdownSelectable.fragments].
+class AnimatedMarkdownSelectionFragment extends StatelessWidget {
+  /// Creates a fragment at [plainTextStart] in its parent projection.
+  const AnimatedMarkdownSelectionFragment({
+    super.key,
+    required this.plainText,
+    required this.plainTextStart,
+    required this.child,
+  });
+
+  /// Visible text represented by [child].
+  final String plainText;
+
+  /// Local offset in the enclosing custom object's plain text.
+  final int plainTextStart;
+
+  /// Visual fragment, normally a [Text], [RichText], or [SelectableText].
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final _AnimatedMarkdownSelectionFragmentScope? scope =
+        _AnimatedMarkdownSelectionFragmentScope.maybeOf(context);
+    assert(
+      scope != null,
+      'AnimatedMarkdownSelectionFragment must be inside '
+      'AnimatedMarkdownSelectable.fragments.',
+    );
+    if (scope == null || plainText.isEmpty) {
+      return child;
+    }
+    final int start = plainTextStart.clamp(0, scope.plainTextLength);
+    final int end = (start + plainText.length).clamp(
+      start,
+      scope.plainTextLength,
+    );
+    assert(
+      end - start == plainText.length,
+      'The fragment range must fit inside the parent plainText.',
+    );
+    final String representedText = plainText.substring(0, end - start);
+    return _MarkdownSelectableTextSpan(
+      semanticRange: TextRange(start: start, end: end),
+      text: representedText,
+      paintSelectionLocally: true,
+      child: child,
+    );
+  }
+}
+
+class _AnimatedMarkdownSelectionFragmentScope extends InheritedWidget {
+  const _AnimatedMarkdownSelectionFragmentScope({
+    required this.plainTextLength,
+    required super.child,
+  });
+
+  final int plainTextLength;
+
+  static _AnimatedMarkdownSelectionFragmentScope? maybeOf(
+    BuildContext context,
+  ) {
+    return context.dependOnInheritedWidgetOfExactType<
+        _AnimatedMarkdownSelectionFragmentScope>();
+  }
+
+  @override
+  bool updateShouldNotify(
+    covariant _AnimatedMarkdownSelectionFragmentScope oldWidget,
+  ) {
+    return plainTextLength != oldWidget.plainTextLength;
+  }
+}
 
 /// Preferred public name for block override context.
 typedef AnimatedMarkdownBlockContext = StreamingMarkdownBlockBuildContext;

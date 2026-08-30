@@ -335,6 +335,137 @@ class _MarkdownSelectionProjection {
     return _MarkdownSourceSelectionRange(start: sourceStart, end: sourceEnd);
   }
 
+  TextSelection? sourceSelectionForPlainSelection(
+    TextSelection selection, {
+    required String plainSeparator,
+  }) {
+    if (!selection.isValid || selection.isCollapsed) {
+      return null;
+    }
+    final _MarkdownSourceSelectionRange? range = sourceRangeForPlainRange(
+      _MarkdownSelectionRange(
+        start: selection.start,
+        end: selection.end,
+      ),
+      plainSeparator: plainSeparator,
+    );
+    if (range == null) {
+      return null;
+    }
+    final bool forward = selection.baseOffset <= selection.extentOffset;
+    return TextSelection(
+      baseOffset: forward ? range.start : range.end,
+      extentOffset: forward ? range.end : range.start,
+      affinity: selection.affinity,
+      isDirectional: true,
+    );
+  }
+
+  TextSelection plainSelectionForSourceSelection(
+    TextSelection selection, {
+    String plainSeparator = '\n\n',
+  }) {
+    if (!selection.isValid) {
+      return const TextSelection.collapsed(offset: -1);
+    }
+    return TextSelection(
+      baseOffset: plainOffsetForSourceOffset(
+        selection.baseOffset,
+        plainSeparator: plainSeparator,
+        preferNextAtBoundary: true,
+      ),
+      extentOffset: plainOffsetForSourceOffset(
+        selection.extentOffset,
+        plainSeparator: plainSeparator,
+        preferNextAtBoundary: false,
+      ),
+      affinity: selection.affinity,
+      isDirectional: selection.isDirectional,
+    );
+  }
+
+  int sourceOffsetForPlainOffset(
+    int offset, {
+    String plainSeparator = '\n\n',
+    required bool preferNextAtBoundary,
+  }) {
+    int plainCursor = 0;
+    int sourceCursor = 0;
+    for (int i = 0; i < segments.length; i++) {
+      if (i > 0) {
+        final int separatorStart = plainCursor;
+        plainCursor += plainSeparator.length;
+        if (offset < plainCursor ||
+            (!preferNextAtBoundary && offset == plainCursor)) {
+          final int local = (offset - separatorStart).clamp(0, 2);
+          return (sourceCursor + local).clamp(0, fullMarkdownText.length);
+        }
+        sourceCursor += 2;
+      }
+      final _MarkdownSelectionSegment segment = segments[i];
+      final int plainEnd = plainCursor + segment.plainText.length;
+      final bool belongsToSegment = offset < plainEnd ||
+          (!preferNextAtBoundary && offset == plainEnd) ||
+          i == segments.length - 1;
+      if (belongsToSegment) {
+        final int local = (offset - plainCursor).clamp(
+          0,
+          segment.plainText.length,
+        );
+        return sourceCursor +
+            segment.markdownOffsetForPlainOffset(
+              local,
+              preferNextAtBoundary: preferNextAtBoundary,
+            );
+      }
+      plainCursor = plainEnd;
+      sourceCursor += segment.markdownText.length;
+    }
+    return sourceCursor;
+  }
+
+  int plainOffsetForSourceOffset(
+    int offset, {
+    String plainSeparator = '\n\n',
+    required bool preferNextAtBoundary,
+  }) {
+    int sourceCursor = 0;
+    int plainCursor = 0;
+    final int sourceLength = fullMarkdownText.length;
+    final int resolvedOffset = offset.clamp(0, sourceLength);
+    for (int i = 0; i < segments.length; i++) {
+      if (i > 0) {
+        final int separatorStart = sourceCursor;
+        sourceCursor += 2;
+        if (resolvedOffset < sourceCursor ||
+            (!preferNextAtBoundary && resolvedOffset == sourceCursor)) {
+          final int local = resolvedOffset - separatorStart;
+          return plainCursor + local.clamp(0, plainSeparator.length);
+        }
+        plainCursor += plainSeparator.length;
+      }
+      final _MarkdownSelectionSegment segment = segments[i];
+      final int sourceEnd = sourceCursor + segment.markdownText.length;
+      final bool belongsToSegment = resolvedOffset < sourceEnd ||
+          (!preferNextAtBoundary && resolvedOffset == sourceEnd) ||
+          i == segments.length - 1;
+      if (belongsToSegment) {
+        final int local = (resolvedOffset - sourceCursor).clamp(
+          0,
+          segment.markdownText.length,
+        );
+        return plainCursor +
+            segment.plainOffsetForMarkdownOffset(
+              local,
+              preferNextAtBoundary: preferNextAtBoundary,
+            );
+      }
+      sourceCursor = sourceEnd;
+      plainCursor += segment.plainText.length;
+    }
+    return plainCursor;
+  }
+
   int _displayOffsetForCompactOffset(
     int offset, {
     required bool preferNextAtBoundary,

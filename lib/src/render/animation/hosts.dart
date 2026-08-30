@@ -4,6 +4,7 @@ class _BlockRenderHost extends StatefulWidget {
   const _BlockRenderHost({
     super.key,
     required this.signature,
+    required this.selectionIdentity,
     required this.node,
     required this.linkReferences,
     required this.footnoteNumbers,
@@ -13,6 +14,7 @@ class _BlockRenderHost extends StatefulWidget {
   });
 
   final String signature;
+  final String selectionIdentity;
   final MarkdownRenderNode node;
   final Map<String, String> linkReferences;
   final Map<String, int> footnoteNumbers;
@@ -60,23 +62,58 @@ class _BlockRenderHostState extends State<_BlockRenderHost>
   Duration? _pausedDelay;
   bool _paused = false;
   DateTime? _scheduledForReveal;
+  _MarkdownSelectionHost? _selectionHost;
 
   @override
-  bool get wantKeepAlive => true;
+  bool get wantKeepAlive =>
+      _selectionHost?.shouldLeaseBlock(widget.selectionIdentity) ?? false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final _MarkdownSelectionHost? nextHost =
+        _MarkdownSelectionHostScope.maybeOf(context);
+    if (nextHost == _selectionHost) {
+      return;
+    }
+    _selectionHost?.removeListener(_handleSelectionHostChanged);
+    _selectionHost = nextHost;
+    _selectionHost?.addListener(_handleSelectionHostChanged);
+    updateKeepAlive();
+  }
 
   @override
   void didUpdateWidget(covariant _BlockRenderHost oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.signature != widget.signature) {
-      _cachedSignature = null;
-      _cachedChild = null;
-      _compacted = false;
-      _cancelCompactionTimer();
+      if (_selectionHost?.shouldLeaseBlock(widget.selectionIdentity) ?? false) {
+        updateKeepAlive();
+        return;
+      }
+      _invalidateCachedBlock();
     }
+  }
+
+  void _invalidateCachedBlock() {
+    _cachedSignature = null;
+    _cachedChild = null;
+    _compacted = false;
+    _cancelCompactionTimer();
+  }
+
+  void _handleSelectionHostChanged() {
+    updateKeepAlive();
+    if (!mounted ||
+        (_selectionHost?.shouldLeaseBlock(widget.selectionIdentity) ?? false) ||
+        _cachedSignature == widget.signature) {
+      return;
+    }
+    setState(_invalidateCachedBlock);
   }
 
   @override
   void dispose() {
+    _selectionHost?.removeListener(_handleSelectionHostChanged);
     _cancelCompactionTimer();
     super.dispose();
   }
@@ -200,15 +237,19 @@ class _BlockRenderHostState extends State<_BlockRenderHost>
     super.build(context);
     _syncCompactionSchedule(context);
     if (_cachedChild == null || _cachedSignature != widget.signature) {
+      final MarkdownRenderNode node = widget.node;
+      final Map<String, String> linkReferences = widget.linkReferences;
+      final Map<String, int> footnoteNumbers = widget.footnoteNumbers;
+      final _BlockBuilder builder = widget.builder;
       _cachedChild = _TokenCompactionScope(
         compacted: _compacted,
         child: Builder(
           builder: (BuildContext context) {
-            return widget.builder(
+            return builder(
               context,
-              widget.node,
-              widget.linkReferences,
-              widget.footnoteNumbers,
+              node,
+              linkReferences,
+              footnoteNumbers,
             );
           },
         ),

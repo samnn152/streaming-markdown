@@ -43,9 +43,8 @@ class MarkdownChatApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider<ChatBloc>(
-      create: (_) =>
-          ChatBloc(streamAnswerUseCase: _buildUseCase())
-            ..add(const ChatStarted()),
+      create: (_) => ChatBloc(streamAnswerUseCase: _buildUseCase())
+        ..add(const ChatStarted()),
       child: MaterialApp(
         title: 'Streaming Markdown Chat',
         debugShowCheckedModeBanner: false,

@@ -7,6 +7,7 @@ class _FadeInTokenHost extends StatefulWidget {
     required this.duration,
     required this.curve,
     this.animationBuilder,
+    this.onReveal,
     this.onFadeInEnd,
     required this.child,
     super.key,
@@ -17,6 +18,7 @@ class _FadeInTokenHost extends StatefulWidget {
   final Duration duration;
   final Curve curve;
   final StreamingMarkdownTokenAnimationBuilder? animationBuilder;
+  final VoidCallback? onReveal;
   final VoidCallback? onFadeInEnd;
   final Widget child;
 
@@ -36,6 +38,7 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
   Duration? _pausedDelay;
   bool _paused = false;
   bool _configured = false;
+  bool _revealReported = false;
 
   @override
   void initState() {
@@ -46,6 +49,19 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
   void dispose() {
     _timer?.cancel();
     super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FadeInTokenHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_revealReported && oldWidget.onReveal != widget.onReveal) {
+      // Inline selection reveal controllers belong to the current rendered
+      // subtree. Cached token states can outlive that controller while a
+      // streamed block is rebuilt, so replay the already-revealed boundary to
+      // the replacement controller instead of making text selectable again
+      // one token at a time.
+      widget.onReveal?.call();
+    }
   }
 
   @override
@@ -82,6 +98,7 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
       _animationDuration = Duration.zero;
       _beginOpacity = 1;
       _currentOpacity = 1;
+      _reportReveal();
       return;
     }
 
@@ -124,6 +141,7 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
     _animationDuration = widget.duration;
     _beginOpacity = 0;
     _currentOpacity = 0;
+    _reportReveal();
   }
 
   void _startTimer(Duration delay) {
@@ -143,6 +161,15 @@ class _FadeInTokenHostState extends State<_FadeInTokenHost> {
       _beginOpacity = 0;
       _currentOpacity = 0;
     });
+    _reportReveal();
+  }
+
+  void _reportReveal() {
+    if (_revealReported) {
+      return;
+    }
+    _revealReported = true;
+    widget.onReveal?.call();
   }
 
   void _pause() {

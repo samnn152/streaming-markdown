@@ -21,7 +21,7 @@ Add the package:
 
 ```yaml
 dependencies:
-  animated_streaming_markdown: ^0.3.6
+  animated_streaming_markdown: ^0.3.7
 ```
 
 Install dependencies:
@@ -55,6 +55,8 @@ class StreamingMarkdownDemo extends StatefulWidget {
 
 class _StreamingMarkdownDemoState extends State<StreamingMarkdownDemo> {
   final MarkdownStreamParser _parser = MarkdownStreamParser();
+  final AnimatedMarkdownSelectionController _selectionController =
+      AnimatedMarkdownSelectionController();
   final List<MarkdownBlock> _blocks = <MarkdownBlock>[];
 
   bool _parserReady = false;
@@ -76,6 +78,7 @@ class _StreamingMarkdownDemoState extends State<StreamingMarkdownDemo> {
 
   @override
   void dispose() {
+    _selectionController.dispose();
     _parser.dispose();
     super.dispose();
   }
@@ -84,6 +87,10 @@ class _StreamingMarkdownDemoState extends State<StreamingMarkdownDemo> {
 
 Use one parser per active stream. Starting the parser in `initState` keeps the
 UI code simple, and disposing it prevents the isolate from outliving the screen.
+Keep the parser and selection controller in `State`, not in `build`. For a chat
+list, give each message a stable key and keep the message renderer alive while
+it is offscreen; this preserves settled animation, selection, and controller
+state when a new response is appended.
 
 ## 3. Simulate a Streaming Answer
 
@@ -155,6 +162,12 @@ Use `replace('')` before a new stream so the parser state starts from an empty
 document. During a real API call, call `append(chunk)` whenever your backend or
 model emits the next text chunk.
 
+The selection engine uses the same source snapshot while chunks arrive. Users
+can select formatted text, tables, code, images, LaTeX, and HTML blocks; the
+highlight remains one flat visual selection and edge dragging scrolls like a
+`TextField`. Rich copy is available on Web and all native targets, with plain
+text fallback when the clipboard host cannot accept HTML.
+
 For a complete real-world chatbot example, see the static
 [Live Chat Demo](/live-chat-demo). The example app supports local Ollama and
 cloud providers that stream Markdown responses.
@@ -181,33 +194,36 @@ Widget build(BuildContext context) {
       child: Column(
         children: [
           Expanded(
-            child: CustomScrollView(
-              slivers: [
-                SliverPadding(
-                  padding: const EdgeInsets.all(16),
-                  sliver: AnimatedStreamingMarkdown(
-                    blocks: _blocks,
-                    asSliver: true,
-                    enableSelection: true,
-                    tokenStaggerDelay: const Duration(milliseconds: 45),
-                    tokenAnimationDuration: const Duration(milliseconds: 180),
-                    tokenAnimationCurve: Curves.easeOutCubic,
-                    placeholder: const Center(
-                      child: Text('Tap Start to stream Markdown.'),
+            child: AnimatedStreamingMarkdownSelectionArea(
+              controller: _selectionController,
+              child: CustomScrollView(
+                slivers: [
+                  SliverPadding(
+                    padding: const EdgeInsets.all(16),
+                    sliver: AnimatedStreamingMarkdown(
+                      blocks: _blocks,
+                      asSliver: true,
+                      enableSelection: true,
+                      selectionController: _selectionController,
+                      tokenStaggerDelay: const Duration(milliseconds: 45),
+                      tokenAnimationDuration:
+                          const Duration(milliseconds: 180),
+                      tokenAnimationCurve: Curves.easeOutCubic,
+                      placeholder: 'Tap Start to stream Markdown.',
+                      tokenAnimationBuilder: (context, token) {
+                        final t = Curves.easeOutCubic.transform(token.value);
+                        return Opacity(
+                          opacity: t,
+                          child: Transform.translate(
+                            offset: Offset(0, (1 - t) * 6),
+                            child: token.child,
+                          ),
+                        );
+                      },
                     ),
-                    tokenAnimationBuilder: (context, token) {
-                      final t = Curves.easeOutCubic.transform(token.value);
-                      return Opacity(
-                        opacity: t,
-                        child: Transform.translate(
-                          offset: Offset(0, (1 - t) * 6),
-                          child: token.child,
-                        ),
-                      );
-                    },
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           Padding(
@@ -232,7 +248,8 @@ Widget build(BuildContext context) {
 
 `AnimatedStreamingMarkdown` can render as a normal box widget or as a sliver.
 For chat and document screens, `asSliver: true` fits naturally inside
-`CustomScrollView`.
+`CustomScrollView`. When selection is enabled, the explicit selection area
+keeps source ranges stable while sliver children mount and unmount.
 
 ## 5. Run It
 
@@ -299,5 +316,6 @@ If your backend sends complete snapshots instead of appended chunks, call
 - Use `append` only when each update contains the next new text chunk.
 - Use `replace` when each update contains the whole current document.
 - Enable `enableSelection` when users need copy behavior.
-- Dispose the parser from `dispose`.
+- Use `AnimatedStreamingMarkdownSelectionArea` for selectable slivers.
+- Dispose app-owned parser and selection controllers from `dispose`.
 - Keep token delays short for high-volume chat streams.

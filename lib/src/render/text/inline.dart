@@ -72,6 +72,32 @@ extension _StreamingMarkdownInlineParsing on StreamingMarkdownRenderView {
         );
         if (link != null) {
           flushPlain();
+          if (!link.isCompleted) {
+            final MarkdownInlineLink semanticLink = MarkdownInlineLink(
+              label: link.label,
+              destination: link.url,
+              isCompleted: false,
+              source: link.sourceMarkdown,
+              start: i,
+              end: link.end,
+            );
+            final String projection = incompleteLinkTextBuilder?.call(
+                  semanticLink,
+                ) ??
+                semanticLink.destination;
+            tokens.add(
+              _InlineToken.text(
+                text: projection,
+                style: style,
+                linkUrl: semanticLink.hasDestination
+                    ? semanticLink.destination
+                    : null,
+                sourceMarkdown: link.sourceMarkdown,
+              ),
+            );
+            i = link.end;
+            continue;
+          }
           final List<_InlineToken> labelTokens = _parseInlineTokens(
             link.label,
             style: style,
@@ -85,7 +111,7 @@ extension _StreamingMarkdownInlineParsing on StreamingMarkdownRenderView {
                 text: link.label,
                 style: style,
                 linkUrl: link.url,
-                sourceMarkdown: text.substring(i, link.end),
+                sourceMarkdown: link.sourceMarkdown,
               ),
             );
           } else {
@@ -94,8 +120,10 @@ extension _StreamingMarkdownInlineParsing on StreamingMarkdownRenderView {
                 tokens.add(token);
               } else {
                 tokens.add(
-                  token.withLink(link.url,
-                      sourceMarkdown: text.substring(i, link.end)),
+                  token.withLink(
+                    link.url,
+                    sourceMarkdown: link.sourceMarkdown,
+                  ),
                 );
               }
             }

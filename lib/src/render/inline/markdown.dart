@@ -7,9 +7,11 @@ extension _StreamingMarkdownInlineMarkdownRenderer
     String text, {
     int tokenStartIndex = 0,
     int plainTextStart = 0,
+    bool restrictSelectionToRevealedTokens = false,
     TextStyle? baseStyle,
     Map<String, String> linkReferences = const <String, String>{},
     Map<String, int> footnoteNumbers = const <String, int>{},
+    SelectionRegistrar? customRegistrar,
   }) {
     final String normalized = text.replaceAll('\r', '');
     if (normalized.isEmpty) {
@@ -47,19 +49,36 @@ extension _StreamingMarkdownInlineMarkdownRenderer
     final DateTime? tokenScheduleOrigin = scheduleScope?.revealedAt;
     final Duration resolvedTokenStep =
         scheduleScope?.tokenArrivalDelay ?? tokenStaggerDelay;
-    final _MarkdownSelectionRange? sourceVisualRange =
-        _sourceSelectionVisualRangeForInline(
-      context,
-      selectableText.length,
-      plainTextStart: plainTextStart,
-    );
-    final Color? sourceVisualColor = sourceVisualRange == null
-        ? null
-        : _MarkdownSourceSelectionVisualScope.maybeOf(context)?.selectionColor;
+    final _InlineSelectionRevealController? selectionRevealController =
+        restrictSelectionToRevealedTokens &&
+                enableTextSelection &&
+                animatePerWord &&
+                tokenFadeDuration > Duration.zero &&
+                resolvedTokenStep > Duration.zero
+            ? _InlineSelectionRevealController()
+            : null;
+    final ValueChanged<int>? onTokenReveal =
+        selectionRevealController?.revealThrough;
+    // Selection is painted once by the selectable proxy. Painting it inside
+    // every animated token creates a separate backdrop for each word and makes
+    // a continuous browser-style selection look like a row of shadows.
+    //
+    // The proxy owns a stable coordinator-backed paint range, so it can keep
+    // this single layer alive through framework geometry repartitioning and
+    // sliver remounts without rebuilding the token subtree.
+    final Color flatSelectionColor =
+        markdownTheme.selectionColor ?? const Color(0x6658A6FF);
 
     final List<InlineSpan> spans = <InlineSpan>[];
     int visualTokenIndex = tokenStartIndex;
+    int selectableTokenTextStart = 0;
     for (final _InlineToken token in tokens) {
+      final String tokenSelectableText = _plainTextForVisualInlineToken(
+        token,
+        footnoteNumbers: footnoteNumbers,
+      );
+      final int tokenSelectableTextEnd =
+          selectableTokenTextStart + tokenSelectableText.length;
       if (token.isImage) {
         visualTokenIndex = _appendAnimatedWidgetSpan(
           spans: spans,
@@ -72,8 +91,17 @@ extension _StreamingMarkdownInlineMarkdownRenderer
           animate: !compacted,
           alignment: inlineImageAlignment,
           baseline: _baselineForPlaceholderAlignment(inlineImageAlignment),
-          child: _buildInlineImageToken(context, token, resolvedStyle),
+          revealedTextEnd: tokenSelectableTextEnd,
+          onTokenReveal: onTokenReveal,
+          child: _MarkdownSelectableAtomicSpan(
+            semanticRange: TextRange(
+              start: selectableTokenTextStart,
+              end: tokenSelectableTextEnd,
+            ),
+            child: _buildInlineImageToken(context, token, resolvedStyle),
+          ),
         );
+        selectableTokenTextStart = tokenSelectableTextEnd;
         continue;
       }
 
@@ -88,8 +116,17 @@ extension _StreamingMarkdownInlineMarkdownRenderer
           tokenAnimationBuilder: tokenAnimationBuilder,
           animate: !compacted,
           alignment: PlaceholderAlignment.middle,
-          child: _buildLatexToken(context, token, resolvedStyle),
+          revealedTextEnd: tokenSelectableTextEnd,
+          onTokenReveal: onTokenReveal,
+          child: _MarkdownSelectableAtomicSpan(
+            semanticRange: TextRange(
+              start: selectableTokenTextStart,
+              end: tokenSelectableTextEnd,
+            ),
+            child: _buildLatexToken(context, token, resolvedStyle),
+          ),
         );
+        selectableTokenTextStart = tokenSelectableTextEnd;
         continue;
       }
 
@@ -111,17 +148,29 @@ extension _StreamingMarkdownInlineMarkdownRenderer
           animate: !compacted,
           alignment: PlaceholderAlignment.middle,
           tokenUnits: _inlineWordCount(token.text),
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 2),
-            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-            decoration: BoxDecoration(
+          revealedTextEnd: tokenSelectableTextEnd,
+          onTokenReveal: onTokenReveal,
+          selectableRange: TextRange(
+            start: selectableTokenTextStart,
+            end: tokenSelectableTextEnd,
+          ),
+          selectableText: token.text,
+          paintFullSelectionBounds: true,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: _MarkdownSelectionAwareBackground(
+              text: token.text,
               color: markdownTheme.inlineCodeBackgroundColor ??
                   const Color(0xFF21262D),
               borderRadius: BorderRadius.circular(4),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                child: Text(token.text, style: inlineCodeStyle),
+              ),
             ),
-            child: Text(token.text, style: inlineCodeStyle),
           ),
         );
+        selectableTokenTextStart = tokenSelectableTextEnd;
         continue;
       }
 
@@ -132,6 +181,11 @@ extension _StreamingMarkdownInlineMarkdownRenderer
         );
         final String label =
             footnoteNumber?.toString() ?? token.footnoteReferenceId!;
+        const TextStyle footnoteStyle = TextStyle(
+          color: Color(0xFF8B949E),
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        );
         visualTokenIndex = _appendAnimatedWidgetSpan(
           spans: spans,
           tokenIndex: visualTokenIndex,
@@ -143,18 +197,19 @@ extension _StreamingMarkdownInlineMarkdownRenderer
           animate: !compacted,
           alignment: PlaceholderAlignment.aboveBaseline,
           baseline: TextBaseline.alphabetic,
+          revealedTextEnd: tokenSelectableTextEnd,
+          onTokenReveal: onTokenReveal,
+          selectableRange: TextRange(
+            start: selectableTokenTextStart,
+            end: tokenSelectableTextEnd,
+          ),
+          selectableText: label,
           child: Padding(
             padding: const EdgeInsets.only(left: 1),
-            child: Text(
-              label,
-              style: const TextStyle(
-                color: Color(0xFF8B949E),
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            child: Text(label, style: footnoteStyle),
           ),
         );
+        selectableTokenTextStart = tokenSelectableTextEnd;
         continue;
       }
 
@@ -187,8 +242,11 @@ extension _StreamingMarkdownInlineMarkdownRenderer
           tokenScheduleOrigin: tokenScheduleOrigin,
           tokenAnimationBuilder: tokenAnimationBuilder,
           animatePerWord: animatePerWord,
+          plainTextOffset: selectableTokenTextStart,
+          onTokenReveal: onTokenReveal,
           onTap: () => _onLinkPressed(context, token.linkUrl!),
         );
+        selectableTokenTextStart = tokenSelectableTextEnd;
         continue;
       }
       visualTokenIndex = _appendTokenizedTextSpans(
@@ -202,10 +260,13 @@ extension _StreamingMarkdownInlineMarkdownRenderer
         tokenScheduleOrigin: tokenScheduleOrigin,
         tokenAnimationBuilder: tokenAnimationBuilder,
         animatePerWord: animatePerWord,
+        plainTextOffset: selectableTokenTextStart,
+        onTokenReveal: onTokenReveal,
       );
+      selectableTokenTextStart = tokenSelectableTextEnd;
     }
 
-    final TextScaler textScaler = MediaQuery.textScalerOf(context);
+    final _MarkdownTextScale textScale = _markdownTextScaleOf(context);
     final _MarkdownSelectionBlockRange? selectionBlockRange =
         _MarkdownSelectionBlockVisualScope.maybeOf(context)?.blockRange;
     final int absolutePlainTextStart =
@@ -215,38 +276,44 @@ extension _StreamingMarkdownInlineMarkdownRenderer
             plainTextStart;
     final _MarkdownInlineSelectionRegistry? inlineSelectionRegistry =
         _MarkdownInlineSelectionRegistryScope.maybeOf(context);
-    final Widget animatedRichText = RichText(
+    final Widget animatedRichText = _markdownRichText(
       textAlign: TextAlign.left,
       textDirection: TextDirection.ltr,
-      textScaler: textScaler,
+      textScale: textScale,
       text: TextSpan(style: resolvedStyle, children: spans),
     );
+    final Widget selectionChild =
+        SelectionContainer.disabled(child: animatedRichText);
     final Widget selectableOutput = !enableTextSelection
         ? animatedRichText
-        : _SelectableInlineTextProxy(
-            plainText: selectableText,
-            absolutePlainTextStart: absolutePlainTextStart,
-            compactPlainTextStart: compactPlainTextStart,
-            text: selectionText,
-            textDirection: TextDirection.ltr,
-            textScaler: textScaler,
-            registrar: SelectionContainer.maybeOf(context),
-            selectionRegistry: inlineSelectionRegistry,
-            child: SelectionContainer.disabled(
-              child: _InlineSourceSelectionBackdrop(
-                range: sourceVisualRange,
-                selectedText: _selectedTextForRange(
-                  selectableText,
-                  sourceVisualRange,
-                ),
+        : selectionRevealController == null
+            ? _SelectableInlineTextProxy(
+                plainText: selectableText,
+                absolutePlainTextStart: absolutePlainTextStart,
+                compactPlainTextStart: compactPlainTextStart,
                 text: selectionText,
                 textDirection: TextDirection.ltr,
-                textScaler: textScaler,
-                selectionColor: sourceVisualColor,
-                child: animatedRichText,
-              ),
-            ),
-          );
+                textScale: textScale,
+                selectionColor: flatSelectionColor,
+                registrar:
+                    customRegistrar ?? SelectionContainer.maybeOf(context),
+                selectionRegistry: inlineSelectionRegistry,
+                child: selectionChild,
+              )
+            : _ProgressiveSelectableInlineTextProxy(
+                revealController: selectionRevealController,
+                plainText: selectableText,
+                absolutePlainTextStart: absolutePlainTextStart,
+                compactPlainTextStart: compactPlainTextStart,
+                text: selectionText,
+                textDirection: TextDirection.ltr,
+                textScale: textScale,
+                selectionColor: flatSelectionColor,
+                registrar:
+                    customRegistrar ?? SelectionContainer.maybeOf(context),
+                selectionRegistry: inlineSelectionRegistry,
+                child: selectionChild,
+              );
     final Widget output = MouseRegion(
       cursor: SystemMouseCursors.text,
       child: selectableOutput,
@@ -262,18 +329,6 @@ extension _StreamingMarkdownInlineMarkdownRenderer
     }
     return _MarkdownImageLoadBarrier(urls: inlineImageUrls, child: output);
   }
-}
-
-String _selectedTextForRange(
-  String text,
-  _MarkdownSelectionRange? range,
-) {
-  if (range == null || text.isEmpty) {
-    return '';
-  }
-  final int start = range.start.clamp(0, text.length);
-  final int end = range.end.clamp(start, text.length);
-  return start >= end ? '' : text.substring(start, end);
 }
 
 String _plainTextForVisualInlineTokens(
@@ -320,47 +375,6 @@ TextSpan _selectionTextSpanForInlineTokens(
     );
   }
   return TextSpan(style: baseStyle, children: spans);
-}
-
-_MarkdownSelectionRange? _sourceSelectionVisualRangeForInline(
-  BuildContext context,
-  int textLength, {
-  required int plainTextStart,
-}) {
-  final _MarkdownSourceSelectionVisualScope? visualScope =
-      _MarkdownSourceSelectionVisualScope.maybeOf(context);
-  final _MarkdownSelectionBlockVisualScope? blockScope =
-      _MarkdownSelectionBlockVisualScope.maybeOf(context);
-  final _MarkdownSourceSelectionRange? sourceRange = visualScope?.sourceRange;
-  final _MarkdownSelectionRange? plainRange = visualScope?.plainRange;
-  if (visualScope == null ||
-      blockScope == null ||
-      sourceRange == null ||
-      plainRange == null) {
-    return null;
-  }
-
-  final _MarkdownSelectionBlockRange blockRange = blockScope.blockRange;
-  if (sourceRange.end <= blockRange.sourceRange.start ||
-      sourceRange.start >= blockRange.sourceRange.end ||
-      plainRange.end <= blockRange.plainRange.start ||
-      plainRange.start >= blockRange.plainRange.end) {
-    return null;
-  }
-
-  final int absoluteTextStart = blockRange.plainRange.start + plainTextStart;
-  final int absoluteTextEnd = absoluteTextStart + textLength;
-  if (plainRange.end <= absoluteTextStart ||
-      plainRange.start >= absoluteTextEnd) {
-    return null;
-  }
-
-  final int start = (plainRange.start - absoluteTextStart).clamp(0, textLength);
-  final int end = (plainRange.end - absoluteTextStart).clamp(start, textLength);
-  if (start >= end) {
-    return null;
-  }
-  return _MarkdownSelectionRange(start: start, end: end);
 }
 
 String _plainTextForVisualInlineToken(

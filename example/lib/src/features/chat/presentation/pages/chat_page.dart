@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../../../flutter_sdk_compat.dart';
+import '../../../../demos/selection_demo.dart';
+import '../../../../demos/link_custom_demo.dart';
 import '../../domain/models/chat_connection_settings.dart';
 import '../bloc/chat_bloc.dart';
 
@@ -27,6 +30,7 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> {
   static const int _defaultTokenAnimationPresetIndex = 0;
 
+  final GlobalKey _chatSurfaceKey = GlobalKey();
   final TextEditingController _messageController = TextEditingController();
   final TextEditingController _modelController = TextEditingController();
   final TextEditingController _baseUrlController = TextEditingController();
@@ -35,9 +39,9 @@ class _ChatPageState extends State<ChatPage> {
   final ScrollController _scrollController = ScrollController();
 
   late ChatConnectionSettings _settings = widget.initialSettings;
-  double _staggerDelayMs = 80;
+  double _staggerDelayMs = 40;
   double _firstNodeDelayMs = 0;
-  double _animationDurationMs = 150;
+  double _animationDurationMs = 160;
   Curve _animationCurve = Curves.easeOut;
   _TokenAnimationPreset _tokenAnimationPreset =
       _tokenAnimationPresets[_defaultTokenAnimationPresetIndex];
@@ -102,8 +106,8 @@ class _ChatPageState extends State<ChatPage> {
     }
     _settings = _currentSettings();
     context.read<ChatBloc>().add(
-      ChatSubmitted(question: text, settings: _settings),
-    );
+          ChatSubmitted(question: text, settings: _settings),
+        );
     _messageController.clear();
     _scrollToEnd();
   }
@@ -123,6 +127,30 @@ class _ChatPageState extends State<ChatPage> {
       appBar: AppBar(
         title: const Text('Streaming Markdown Chat'),
         actions: [
+          IconButton(
+            key: const ValueKey<String>('open_link_custom_demo'),
+            tooltip: 'Streaming link & custom widget',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const LinkCustomDemoPage(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.link_outlined),
+          ),
+          IconButton(
+            key: const ValueKey<String>('open_selection_lab'),
+            tooltip: 'Open selection lab',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => const SelectionDemoPage(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.ads_click_outlined),
+          ),
           BlocBuilder<ChatBloc, ChatState>(
             builder: (BuildContext context, ChatState state) {
               return IconButton(
@@ -188,6 +216,7 @@ class _ChatPageState extends State<ChatPage> {
                   onProviderChanged: _setProvider,
                 );
                 final Widget chat = _ChatSurface(
+                  key: _chatSurfaceKey,
                   scrollController: _scrollController,
                   messageController: _messageController,
                   settings: _currentSettings(),
@@ -229,7 +258,12 @@ class _ChatPageState extends State<ChatPage> {
                         '${_settings.provider.label} / ${_modelController.text}',
                       ),
                       leading: const Icon(Icons.tune),
-                      children: [settingsPanel],
+                      children: [
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 360),
+                          child: settingsPanel,
+                        ),
+                      ],
                     ),
                     const Divider(height: 1),
                     Expanded(child: chat),
@@ -268,102 +302,102 @@ class _TokenAnimationPreset {
 
 final List<_TokenAnimationPreset> _tokenAnimationPresets =
     <_TokenAnimationPreset>[
-      _TokenAnimationPreset(
-        name: 'Fade',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          return Opacity(opacity: token.value, child: token.child);
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Slide up',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOutCubic.transform(token.value);
-          return Opacity(
-            opacity: t,
-            child: Transform.translate(
-              offset: Offset(0, (1 - t) * 10),
-              child: token.child,
-            ),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Slide right',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOut.transform(token.value);
-          return Opacity(
-            opacity: t,
-            child: Transform.translate(
-              offset: Offset((1 - t) * -14, 0),
-              child: token.child,
-            ),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Scale pop',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOutBack.transform(token.value);
-          return Transform.scale(
-            scale: 0.84 + (0.16 * t),
+  _TokenAnimationPreset(
+    name: 'Fade',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      return Opacity(opacity: token.value, child: token.child);
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Slide up',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOutCubic.transform(token.value);
+      return Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * 10),
+          child: token.child,
+        ),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Slide right',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOut.transform(token.value);
+      return Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset((1 - t) * -14, 0),
+          child: token.child,
+        ),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Scale pop',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOutBack.transform(token.value);
+      return Transform.scale(
+        scale: 0.84 + (0.16 * t),
+        alignment: Alignment.bottomLeft,
+        child: Opacity(opacity: token.value, child: token.child),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Rotate in',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOutBack.transform(token.value);
+      return Opacity(
+        opacity: Curves.easeOut.transform(token.value),
+        child: Transform.translate(
+          offset: Offset((1 - t) * -10, 0),
+          child: Transform.rotate(
+            angle: (1 - t) * -0.42,
             alignment: Alignment.bottomLeft,
-            child: Opacity(opacity: token.value, child: token.child),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Rotate in',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOutBack.transform(token.value);
-          return Opacity(
-            opacity: Curves.easeOut.transform(token.value),
-            child: Transform.translate(
-              offset: Offset((1 - t) * -10, 0),
-              child: Transform.rotate(
-                angle: (1 - t) * -0.42,
-                alignment: Alignment.bottomLeft,
-                child: Transform.scale(
-                  scale: 0.94 + (0.06 * t),
-                  alignment: Alignment.bottomLeft,
-                  child: token.child,
-                ),
-              ),
+            child: Transform.scale(
+              scale: 0.94 + (0.06 * t),
+              alignment: Alignment.bottomLeft,
+              child: token.child,
             ),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Gravity',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double fall = Curves.bounceOut.transform(token.value);
-          final double fade = Curves.easeOutCubic.transform(token.value);
-          return Opacity(
-            opacity: fade,
-            child: Transform.translate(
-              offset: Offset(0, -64 * (1 - fall)),
-              child: Transform.scale(
-                scale: 0.96 + (0.04 * fall),
-                alignment: Alignment.bottomCenter,
-                child: token.child,
-              ),
-            ),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Blur to clear',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOut.transform(token.value);
-          return ImageFiltered(
-            imageFilter: ImageFilter.blur(
-              sigmaX: (1 - t) * 2.6,
-              sigmaY: (1 - t) * 2.6,
-            ),
-            child: Opacity(opacity: t, child: token.child),
-          );
-        },
-      ),
-    ];
+          ),
+        ),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Gravity',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double fall = Curves.bounceOut.transform(token.value);
+      final double fade = Curves.easeOutCubic.transform(token.value);
+      return Opacity(
+        opacity: fade,
+        child: Transform.translate(
+          offset: Offset(0, -64 * (1 - fall)),
+          child: Transform.scale(
+            scale: 0.96 + (0.04 * fall),
+            alignment: Alignment.bottomCenter,
+            child: token.child,
+          ),
+        ),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Blur to clear',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOut.transform(token.value);
+      return ImageFiltered(
+        imageFilter: ImageFilter.blur(
+          sigmaX: (1 - t) * 2.6,
+          sigmaY: (1 - t) * 2.6,
+        ),
+        child: Opacity(opacity: t, child: token.child),
+      );
+    },
+  ),
+];
 
 const List<SelectionStrategy> _selectionStrategies = <SelectionStrategy>[
   SelectionStrategy.rich,
@@ -435,7 +469,6 @@ class _SettingsPanel extends StatelessWidget {
           initialSelection: settings.provider,
           enabled: enabled,
           label: const Text('Provider'),
-          expandedInsets: EdgeInsets.zero,
           leadingIcon: Icon(
             settings.provider == ChatProvider.ollama
                 ? Icons.memory
@@ -533,7 +566,8 @@ class _SettingsPanel extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<_TokenAnimationPreset>(
-          initialValue: tokenAnimationPreset,
+          // ignore: deprecated_member_use
+          value: tokenAnimationPreset,
           decoration: const InputDecoration(
             labelText: 'Token animation style',
             border: OutlineInputBorder(),
@@ -555,7 +589,8 @@ class _SettingsPanel extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<Curve>(
-          initialValue: animationCurve,
+          // ignore: deprecated_member_use
+          value: animationCurve,
           decoration: const InputDecoration(
             labelText: 'Animation curve',
             border: OutlineInputBorder(),
@@ -577,7 +612,8 @@ class _SettingsPanel extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<SelectionStrategy>(
-          initialValue: selectionStrategy,
+          // ignore: deprecated_member_use
+          value: selectionStrategy,
           decoration: const InputDecoration(
             labelText: 'Copy strategy',
             border: OutlineInputBorder(),
@@ -623,6 +659,7 @@ class _SettingsPanel extends StatelessWidget {
 
 class _ChatSurface extends StatefulWidget {
   const _ChatSurface({
+    super.key,
     required this.scrollController,
     required this.messageController,
     required this.settings,
@@ -647,6 +684,7 @@ class _ChatSurface extends StatefulWidget {
 }
 
 class _ChatSurfaceState extends State<_ChatSurface> {
+  final GlobalKey _conversationKey = GlobalKey();
   final Set<String> _settledAssistantIds = <String>{};
 
   bool _canSubmit(ChatState state) {
@@ -768,6 +806,10 @@ class _ChatSurfaceState extends State<_ChatSurface> {
                   );
                 },
               );
+        final Widget stableConversation = KeyedSubtree(
+          key: _conversationKey,
+          child: conversation,
+        );
         return Column(
           children: [
             _StatusBar(
@@ -779,11 +821,11 @@ class _ChatSurfaceState extends State<_ChatSurface> {
               child: LayoutBuilder(
                 builder: (BuildContext context, BoxConstraints constraints) {
                   if (constraints.maxWidth < 860) {
-                    return conversation;
+                    return stableConversation;
                   }
                   return Row(
                     children: [
-                      Expanded(child: conversation),
+                      Expanded(child: stableConversation),
                       const VerticalDivider(width: 1),
                       SizedBox(
                         width: 360,
@@ -823,11 +865,10 @@ class _RawMarkdownPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle codeStyle =
-        Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontFamily: 'monospace',
-          height: 1.45,
-        ) ??
+    final TextStyle codeStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              height: 1.45,
+            ) ??
         const TextStyle(fontFamily: 'monospace', height: 1.45);
 
     return ColoredBox(
@@ -966,7 +1007,9 @@ class _MessageBubble extends StatelessWidget {
           decoration: BoxDecoration(
             color: user
                 ? Theme.of(context).colorScheme.primaryContainer
-                : Theme.of(context).colorScheme.surfaceContainerHighest,
+                : flutterSurfaceContainerHighest(
+                    Theme.of(context).colorScheme,
+                  ),
             borderRadius: BorderRadius.circular(8),
           ),
           child: user
@@ -1027,7 +1070,8 @@ class _AssistantMarkdownBubble extends StatefulWidget {
       _AssistantMarkdownBubbleState();
 }
 
-class _AssistantMarkdownBubbleState extends State<_AssistantMarkdownBubble> {
+class _AssistantMarkdownBubbleState extends State<_AssistantMarkdownBubble>
+    with AutomaticKeepAliveClientMixin<_AssistantMarkdownBubble> {
   final MarkdownStreamParser _parser = MarkdownStreamParser();
   final Queue<String> _pendingSegments = Queue<String>();
 
@@ -1039,10 +1083,16 @@ class _AssistantMarkdownBubbleState extends State<_AssistantMarkdownBubble> {
   int _generation = 0;
   bool _waitingFirstNodeDelay = false;
   bool _sequenceSettled = false;
-  DateTime? _lastRenderActivityAt;
   Timer? _settledTimer;
   String? _settledSignature;
   String? _error;
+
+  // A chat message is a long-lived document, even while it is outside the
+  // ListView cache extent. Without keep-alive Flutter disposes this state and
+  // recreates the parser plus token animation when the user scrolls back or a
+  // new message pushes it off-screen.
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -1066,6 +1116,9 @@ class _AssistantMarkdownBubbleState extends State<_AssistantMarkdownBubble> {
       _settledSignature = null;
       _sequenceSettled = false;
       _schedulePump();
+    }
+    if (!oldWidget.responseComplete && widget.responseComplete) {
+      _scheduleSettledNotification();
     }
   }
 
@@ -1137,7 +1190,6 @@ class _AssistantMarkdownBubbleState extends State<_AssistantMarkdownBubble> {
     _pendingSegments.clear();
     _waitingFirstNodeDelay = false;
     _sequenceSettled = false;
-    _lastRenderActivityAt = null;
     _sourceMarkdown = '';
     _parsedMarkdown = '';
     _syncing = false;
@@ -1194,9 +1246,8 @@ class _AssistantMarkdownBubbleState extends State<_AssistantMarkdownBubble> {
 
   Future<void> _pumpSegments(int generation) async {
     try {
-      while (mounted &&
-          generation == _generation &&
-          _pendingSegments.isNotEmpty) {
+      while (
+          mounted && generation == _generation && _pendingSegments.isNotEmpty) {
         if (_parsedMarkdown.isEmpty &&
             !_waitingFirstNodeDelay &&
             widget.firstNodeDelay > Duration.zero &&
@@ -1274,12 +1325,6 @@ class _AssistantMarkdownBubbleState extends State<_AssistantMarkdownBubble> {
       }
       await SchedulerBinding.instance.endOfFrame;
       await SchedulerBinding.instance.endOfFrame;
-      final DateTime? lastActivityAt = _lastRenderActivityAt;
-      if (lastActivityAt != null &&
-          DateTime.now().difference(lastActivityAt) < _settleQuietWindow()) {
-        _scheduleSettledNotification();
-        return;
-      }
       if (!mounted ||
           _syncing ||
           _waitingFirstNodeDelay ||
@@ -1301,7 +1346,6 @@ class _AssistantMarkdownBubbleState extends State<_AssistantMarkdownBubble> {
   }
 
   void _notifyRenderActivity() {
-    _lastRenderActivityAt = DateTime.now();
     if (widget.responseComplete) {
       _cancelSettledTimer();
       _settledSignature = null;
@@ -1327,6 +1371,7 @@ class _AssistantMarkdownBubbleState extends State<_AssistantMarkdownBubble> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     if (_error != null) {
       return SelectableText('Render failed:\n\n$_error');
     }

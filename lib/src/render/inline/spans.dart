@@ -12,10 +12,17 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
     required DateTime? tokenScheduleOrigin,
     required Map<String, String> linkReferences,
     required Map<String, int> footnoteNumbers,
+    int plainTextOffset = 0,
   }) {
     final bool compacted = _TokenCompactionScope.isCompacted(context);
     int visualTokenIndex = tokenStartIndex;
+    int selectableTextStart = plainTextOffset;
     for (final _InlineToken token in tokens) {
+      final String tokenPlainText = _plainTextForVisualInlineToken(
+        token,
+        footnoteNumbers: footnoteNumbers,
+      );
+      final int selectableTextEnd = selectableTextStart + tokenPlainText.length;
       if (token.isImage) {
         visualTokenIndex = _appendAnimatedWidgetSpan(
           spans: spans,
@@ -28,8 +35,15 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
           animate: !compacted,
           alignment: inlineImageAlignment,
           baseline: _baselineForPlaceholderAlignment(inlineImageAlignment),
-          child: _buildInlineImageToken(context, token, baseStyle),
+          child: _MarkdownSelectableAtomicSpan(
+            semanticRange: TextRange(
+              start: selectableTextStart,
+              end: selectableTextEnd,
+            ),
+            child: _buildInlineImageToken(context, token, baseStyle),
+          ),
         );
+        selectableTextStart = selectableTextEnd;
         continue;
       }
       if (token.isLatex) {
@@ -43,8 +57,15 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
           tokenAnimationBuilder: tokenAnimationBuilder,
           animate: !compacted,
           alignment: PlaceholderAlignment.middle,
-          child: _buildLatexToken(context, token, baseStyle),
+          child: _MarkdownSelectableAtomicSpan(
+            semanticRange: TextRange(
+              start: selectableTextStart,
+              end: selectableTextEnd,
+            ),
+            child: _buildLatexToken(context, token, baseStyle),
+          ),
         );
+        selectableTextStart = selectableTextEnd;
         continue;
       }
       if (token.isFootnoteReference) {
@@ -63,6 +84,12 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
           animate: !compacted,
           alignment: PlaceholderAlignment.aboveBaseline,
           baseline: TextBaseline.alphabetic,
+          selectableRange: TextRange(
+            start: selectableTextStart,
+            end: selectableTextEnd,
+          ),
+          selectableText:
+              footnoteNumber?.toString() ?? token.footnoteReferenceId!,
           child: Text(
             footnoteNumber?.toString() ?? token.footnoteReferenceId!,
             style: baseStyle.copyWith(
@@ -72,6 +99,7 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
             ),
           ),
         );
+        selectableTextStart = selectableTextEnd;
         continue;
       }
 
@@ -108,10 +136,12 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
           tokenScheduleOrigin: tokenScheduleOrigin,
           tokenAnimationBuilder: tokenAnimationBuilder,
           animatePerWord: !compacted,
+          plainTextOffset: selectableTextStart,
           onTap: enableTextSelection
               ? null
               : () => _onLinkPressed(context, token.linkUrl!),
         );
+        selectableTextStart = selectableTextEnd;
         continue;
       }
       visualTokenIndex = _appendTokenizedTextSpans(
@@ -125,12 +155,14 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
         tokenScheduleOrigin: tokenScheduleOrigin,
         tokenAnimationBuilder: tokenAnimationBuilder,
         animatePerWord: !compacted,
+        plainTextOffset: selectableTextStart,
       );
+      selectableTextStart = selectableTextEnd;
     }
   }
 
   Widget _buildImageBlock(BuildContext context, _InlineImageMatch image) {
-    return _MarkdownNetworkImage(
+    final Widget imageWidget = _MarkdownNetworkImage(
       url: image.url,
       altText: image.alt,
       inline: false,
@@ -162,6 +194,14 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
         );
       },
     );
+    final TextStyle semanticStyle =
+        Theme.of(context).textTheme.bodyMedium ?? const TextStyle(fontSize: 14);
+    return _buildSelectableAtomicContent(
+      context,
+      plainText: image.alt.isEmpty ? '[image]' : '[image: ${image.alt}]',
+      textStyle: semanticStyle,
+      child: imageWidget,
+    );
   }
 
   Widget _buildDisplayLatexBlock(
@@ -176,11 +216,53 @@ extension _StreamingMarkdownInlineSpanRenderer on StreamingMarkdownRenderView {
       display: true,
       baseStyle: baseStyle,
     );
-    return SingleChildScrollView(
+    final Widget displayWidget = SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
         child: math,
+      ),
+    );
+    return _buildSelectableAtomicContent(
+      context,
+      plainText: latex.sourceMarkdown,
+      textStyle: baseStyle,
+      child: displayWidget,
+    );
+  }
+
+  Widget _buildSelectableAtomicContent(
+    BuildContext context, {
+    required String plainText,
+    required TextStyle textStyle,
+    required Widget child,
+    int plainTextStart = 0,
+  }) {
+    if (!enableTextSelection || plainText.isEmpty) {
+      return child;
+    }
+    final _MarkdownSelectionBlockRange? selectionBlockRange =
+        _MarkdownSelectionBlockVisualScope.maybeOf(context)?.blockRange;
+    final int absoluteBlockStart = selectionBlockRange?.plainRange.start ?? 0;
+    final int compactBlockStart =
+        selectionBlockRange?.compactRange.start ?? absoluteBlockStart;
+    final int absolutePlainTextStart = absoluteBlockStart + plainTextStart;
+    final int compactPlainTextStart = compactBlockStart + plainTextStart;
+    return MouseRegion(
+      cursor: SystemMouseCursors.text,
+      child: _SelectableInlineTextProxy(
+        plainText: plainText,
+        absolutePlainTextStart: absolutePlainTextStart,
+        compactPlainTextStart: compactPlainTextStart,
+        text: TextSpan(text: plainText, style: textStyle),
+        textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+        textScale: _markdownTextScaleOf(context),
+        selectionColor: markdownTheme.selectionColor ?? const Color(0x6658A6FF),
+        registrar: SelectionContainer.maybeOf(context),
+        selectionRegistry:
+            _MarkdownInlineSelectionRegistryScope.maybeOf(context),
+        atomic: true,
+        child: SelectionContainer.disabled(child: child),
       ),
     );
   }

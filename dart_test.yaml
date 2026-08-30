@@ -1,0 +1,4 @@
+# Golden tests load deterministic fonts into process-global Flutter state.
+# Running test files serially prevents another test process from racing that
+# setup while keeping the same command on Flutter 3.10 and current stable.
+concurrency: 1

@@ -141,6 +141,17 @@ extension _StreamingMarkdownDelimiterParsing on StreamingMarkdownRenderView {
       return null;
     }
 
+    final MarkdownInlineLink? directLink = matchMarkdownInlineLink(text, start);
+    if (directLink != null) {
+      return _InlineLinkMatch(
+        label: directLink.label,
+        url: directLink.destination,
+        end: directLink.end,
+        isCompleted: directLink.isCompleted,
+        sourceMarkdown: directLink.source,
+      );
+    }
+
     final int closeBracket = text.indexOf(']', start + 1);
     if (closeBracket == -1) {
       return null;
@@ -162,7 +173,12 @@ extension _StreamingMarkdownDelimiterParsing on StreamingMarkdownRenderView {
         return null;
       }
       final String url = _stripEnclosingAngles(raw.split(RegExp(r'\s+')).first);
-      return _InlineLinkMatch(label: label, url: url, end: closeParen + 1);
+      return _InlineLinkMatch(
+        label: label,
+        url: url,
+        end: closeParen + 1,
+        sourceMarkdown: text.substring(start, closeParen + 1),
+      );
     }
 
     if (closeBracket + 1 < text.length && text[closeBracket + 1] == '[') {
@@ -178,7 +194,12 @@ extension _StreamingMarkdownDelimiterParsing on StreamingMarkdownRenderView {
       if (url == null) {
         return null;
       }
-      return _InlineLinkMatch(label: label, url: url, end: closeRef + 1);
+      return _InlineLinkMatch(
+        label: label,
+        url: url,
+        end: closeRef + 1,
+        sourceMarkdown: text.substring(start, closeRef + 1),
+      );
     }
 
     final String? shortcutUrl = references[_normalizeReferenceKey(label)];
@@ -187,6 +208,7 @@ extension _StreamingMarkdownDelimiterParsing on StreamingMarkdownRenderView {
         label: label,
         url: shortcutUrl,
         end: closeBracket + 1,
+        sourceMarkdown: text.substring(start, closeBracket + 1),
       );
     }
 

@@ -1,5 +1,75 @@
 ## Unreleased
 
+## 0.3.7
+
+- Represent direct inline links as `MarkdownInlineLink` semantic snapshots,
+  including the current label, destination, completion state, source, and
+  offsets when a stream ends before `)`.
+- Stop exposing unfinished link Markdown as literal text. The default renderer
+  hides a label-only tail, shows the arriving destination, and switches to the
+  linked label on completion. An arriving destination is styled and tappable
+  before `)` arrives; `incompleteLinkTextBuilder` allows downstream applications
+  to choose label-only or hidden projections without reparsing.
+- Keep custom image and LaTeX widgets selectable, and add
+  `AnimatedMarkdownSelectable` for fully custom block objects while copy
+  remains backed by the original Markdown source. Its default behavior is
+  atomic; `.text` adapts `Text`, `RichText`, and Flutter `SelectableText` to
+  character-level selection, while `.fragments` and
+  `AnimatedMarkdownSelectionFragment` map composite widget regions.
+- Keep the first pointer edge collapsed instead of briefly selecting to the
+  end of its visual line, and preserve a finalized range when a mobile
+  long-press targets a word already inside that selection. A single desktop
+  click now dismisses the finalized range without extending a stale anchor,
+  while double- and triple-click retain native word and paragraph selection.
+- Preserve finalized browser selection across scrolling, tab changes, and
+  window changes while still dismissing it for a deliberate primary click
+  elsewhere inside the application.
+- Add `AnimatedMarkdownSelectionValue` and the optional
+  `AnimatedMarkdownSelectionController` for directional, source-backed
+  selection, including `clear()` and `selectAll()`.
+- Add `AnimatedStreamingMarkdownSelectionArea` for selectable sliver content;
+  box renderers continue to host their own selection area automatically.
+- Match `TextField` edge-drag behavior with frame-driven vertical and
+  horizontal auto-scroll, source-stable anchors, endpoint re-hit-testing, and
+  immediate cancellation without fling or post-release momentum.
+- Reveal keyboard and programmatic selection endpoints with configurable
+  `selectionScrollPadding`, using the same 100 ms caret-reveal timing as
+  editable text.
+- Preserve directional selections through streaming append, block replacement,
+  transient sliver unmounts, and geometry leases while an actively selected
+  block changes.
+- Keep highlight paint independent from Flutter's transient selection geometry
+  clears and batch selectable rehydration, preventing blank or doubled frames
+  during mouse, touch, and handle drags on old and current Flutter SDKs.
+- Paint selection as one continuous line layer instead of per-token shadows,
+  derive animated-word highlights from their actual rendered glyph boxes so
+  wrapped lines do not expose token seams or select trailing empty width, cover
+  the full decorated inline-code box when its token is completely selected,
+  hit-test inline code against its real padded render geometry, flatten its
+  selected background into the surrounding line instead of a rounded pill,
+  cover the real bounds of inline/block images and LaTeX widgets, and preserve
+  touch long-press, handle, and keyboard selection across text and non-text
+  content.
+- Complete semantic projection and selection geometry for formatted headings,
+  callouts, front matter, footnotes, nested HTML blocks, lists, tables, code,
+  images, and formulas in both box and lazy sliver renderers.
+- Unify plain, raw Markdown, rich HTML, keyboard, context-menu, browser, and
+  mobile-toolbar copy paths around the controller source range. Rich clipboard
+  writers are included for Web, Android, iOS, macOS, Windows, and Linux, with
+  plain-text fallback when a host rejects HTML.
+- Keep streamed assistant renderers and their parser/token state alive through
+  example chat-list recycling, so adding a message does not replay completed
+  responses or reset their selection.
+- Add TextField-reference, controller, box/sliver, browser, and offline native
+  integration regression coverage for selection and auto-scroll lifecycle.
+- Refresh the public demo recording at 1440x900 and the README GIF at 960x600
+  with deterministic selection, incomplete-link, and custom-widget fixtures.
+- Preserve the Flutter 3.10 minimum while supporting current stable releases by
+  embedding the view-only KaTeX renderer and replacing its version-sensitive
+  layout callback with a stable `LayoutBuilder` baseline adapter.
+- Make the example project's Dart and dependency constraints resolvable from
+  Dart 3.0 through current stable, and gate both Flutter 3.10.7 and stable in CI.
+
 ## 0.3.6
 
 - Replace overlay-derived selection tracking with render-backed absolute range

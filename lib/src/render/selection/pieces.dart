@@ -165,6 +165,60 @@ class _MarkdownSelectionSegment {
     return _MarkdownSelectionRange(start: markdownStart, end: markdownEnd);
   }
 
+  int markdownOffsetForPlainOffset(
+    int offset, {
+    required bool preferNextAtBoundary,
+  }) {
+    final int resolvedOffset = offset.clamp(0, plainText.length);
+    int plainCursor = 0;
+    int markdownCursor = 0;
+    for (int i = 0; i < pieces.length; i++) {
+      final _MarkdownSelectionPiece piece = pieces[i];
+      final int plainEnd = plainCursor + piece.plainText.length;
+      final bool belongsToPiece = resolvedOffset < plainEnd ||
+          (!preferNextAtBoundary && resolvedOffset == plainEnd) ||
+          i == pieces.length - 1;
+      if (belongsToPiece) {
+        return markdownCursor +
+            piece.markdownOffsetForPlainOffset(
+              (resolvedOffset - plainCursor).clamp(0, piece.plainText.length),
+              preferNextAtBoundary: preferNextAtBoundary,
+            );
+      }
+      plainCursor = plainEnd;
+      markdownCursor += piece.markdownText.length;
+    }
+    return fallbackMarkdownText.length;
+  }
+
+  int plainOffsetForMarkdownOffset(
+    int offset, {
+    required bool preferNextAtBoundary,
+  }) {
+    final int resolvedOffset = offset.clamp(0, fallbackMarkdownText.length);
+    int plainCursor = 0;
+    int markdownCursor = 0;
+    for (int i = 0; i < pieces.length; i++) {
+      final _MarkdownSelectionPiece piece = pieces[i];
+      final int markdownEnd = markdownCursor + piece.markdownText.length;
+      final bool belongsToPiece = resolvedOffset < markdownEnd ||
+          (!preferNextAtBoundary && resolvedOffset == markdownEnd) ||
+          i == pieces.length - 1;
+      if (belongsToPiece) {
+        return plainCursor +
+            piece.plainOffsetForMarkdownOffset(
+              (resolvedOffset - markdownCursor).clamp(
+                0,
+                piece.markdownText.length,
+              ),
+            );
+      }
+      markdownCursor = markdownEnd;
+      plainCursor += piece.plainText.length;
+    }
+    return plainText.length;
+  }
+
   String _slicePieceMarkdown({
     required _MarkdownSelectionPiece piece,
     required int localStart,
@@ -231,6 +285,45 @@ class _MarkdownSelectionPiece {
       );
     }
     return _MarkdownSelectionRange(start: 0, end: markdownText.length);
+  }
+
+  int markdownOffsetForPlainOffset(
+    int offset, {
+    required bool preferNextAtBoundary,
+  }) {
+    final int resolvedOffset = offset.clamp(0, plainText.length);
+    if (plainText.isEmpty) {
+      return preferNextAtBoundary ? markdownText.length : 0;
+    }
+    if (markdownText == plainText) {
+      return resolvedOffset;
+    }
+    final int plainIndex = markdownText.indexOf(plainText);
+    if (plainIndex < 0) {
+      return resolvedOffset == 0 ? 0 : markdownText.length;
+    }
+    if (resolvedOffset == 0) {
+      return 0;
+    }
+    if (resolvedOffset == plainText.length) {
+      return markdownText.length;
+    }
+    return plainIndex + resolvedOffset;
+  }
+
+  int plainOffsetForMarkdownOffset(int offset) {
+    final int resolvedOffset = offset.clamp(0, markdownText.length);
+    if (plainText.isEmpty) {
+      return 0;
+    }
+    if (markdownText == plainText) {
+      return resolvedOffset.clamp(0, plainText.length);
+    }
+    final int plainIndex = markdownText.indexOf(plainText);
+    if (plainIndex < 0) {
+      return resolvedOffset <= markdownText.length ~/ 2 ? 0 : plainText.length;
+    }
+    return (resolvedOffset - plainIndex).clamp(0, plainText.length);
   }
 }
 

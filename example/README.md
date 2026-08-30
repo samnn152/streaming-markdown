@@ -1,13 +1,21 @@
 # Streaming Markdown Flutter Example
 
-Flutter demo app for visual markdown parsing with `animated_streaming_markdown`.
+Flutter chatbot and deterministic feature labs for
+`animated_streaming_markdown`.
 
 ## What it shows
 
-- Loads GitHub's GFM spec file: `assets/github_gfm_spec.md`
-- Uses `RopeString` + `RopeMarkdownParser` (Dart-only)
-- If native library is available: uses `TreeSitterMarkdownParser` and renders node tree
-- Lets you append markdown chunks and parse again live
+- A real streaming chatbot for Ollama, OpenAI-compatible APIs, Claude, Gemini,
+  and Grok.
+- Stable per-message parser and renderer state when later messages are added.
+- The offline Selection lab, including flat formatted-text selection,
+  source-backed copy strategies, tables, code, and inline code.
+- The offline Streaming link & custom widget lab, including incomplete-link
+  semantics, tappable temporary destinations, and character-level selection in
+  an interactive custom object.
+- A standalone Markdown cases catalog backed by the bundled GFM fixture.
+- A parser benchmark for pure Dart, synchronous native, and isolate-worker
+  paths when the native parser is available.
 
 ## Run
 
@@ -24,6 +32,17 @@ Run the standalone Markdown cases catalog:
 cd example
 flutter run -t lib/src/demos/markdown_cases_demo.dart
 ```
+
+Run the parser benchmark:
+
+```bash
+cd example
+flutter run -t lib/src/demos/parser_benchmark_demo.dart
+```
+
+The main app's link and pointer icons open the two offline labs. They do not
+need an API key or network response and are the fixtures used by the public
+0.3.7 preview recording.
 
 ## Asset source
 

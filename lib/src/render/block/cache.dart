@@ -138,6 +138,8 @@ extension _StreamingMarkdownBlockCache on StreamingMarkdownRenderView {
       ..write(':')
       ..write(customLatexBuilder.hashCode)
       ..write(':')
+      ..write(incompleteLinkTextBuilder.hashCode)
+      ..write(':')
       ..write(inlineImageAlignment)
       ..write(':')
       ..write(onLinkTap.hashCode)

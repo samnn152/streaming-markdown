@@ -1,4 +1,11 @@
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  # This is an attributed, lightly adapted upstream source snapshot. It is
+  # compiled by package tests on every supported Flutter lane, while its
+  # upstream style lints stay isolated from first-party package analysis.
+  exclude:
+    - lib/src/third_party/**
+
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

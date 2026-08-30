@@ -100,8 +100,7 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
     }
 
     if (!widget.paused && _pendingIds.isEmpty && _revealTimer == null) {
-      widget.onSequenceSettled?.call();
-      _enterWaiting();
+      _settleSequence();
     }
   }
 
@@ -110,7 +109,7 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
       return;
     }
     if (_pendingIds.isEmpty) {
-      _enterWaiting();
+      _settleSequence();
       return;
     }
 
@@ -127,7 +126,7 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
     });
 
     if (_pendingIds.isEmpty) {
-      _enterWaiting();
+      _settleSequence();
       return;
     }
 
@@ -262,6 +261,14 @@ class _SequencedBlockListState extends State<_SequencedBlockList> {
     }
     _isWaiting = true;
     widget.onWait?.call();
+  }
+
+  void _settleSequence() {
+    if (_isWaiting) {
+      return;
+    }
+    widget.onSequenceSettled?.call();
+    _enterWaiting();
   }
 
   @override
