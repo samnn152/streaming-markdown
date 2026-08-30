@@ -8,11 +8,12 @@ import 'package:flutter/rendering.dart'
         PaintingContext,
         PipelineOwner,
         RenderObject,
+        RenderEditable,
+        RenderParagraph,
         RenderProxyBox,
         DirectionallyExtendSelectionEvent,
         GranularlyExtendSelectionEvent,
         SelectedContent,
-        SelectedContentRange,
         Selectable,
         SelectWordSelectionEvent,
         SelectionExtendDirection,
@@ -27,7 +28,7 @@ import 'package:flutter/rendering.dart'
         SelectionUtils,
         TextGranularity;
 import 'package:flutter/services.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:html/dom.dart' as html_dom;
 import 'package:html/parser.dart' as html_parser;
 import 'dart:async';
@@ -35,14 +36,17 @@ import 'dart:collection';
 import 'selection/web_copy_interceptor_stub.dart'
     if (dart.library.html) 'selection/web_copy_interceptor_web.dart'
     as web_copy;
+import '../third_party/flutter_math/flutter_math.dart';
 
 import '../copy/clipboard_handler.dart';
 import '../copy/selection_strategy.dart';
 import '../model/render_node.dart';
+import '../model/inline_link.dart';
 import '../worker/parse_worker_stub.dart'
     if (dart.library.ffi) '../worker/parse_worker.dart';
 
 part 'api.dart';
+part 'text/scaling.dart';
 part 'text/blocks.dart';
 part 'text/tables.dart';
 part 'text/refs.dart';
@@ -64,6 +68,7 @@ part 'inline/spans.dart';
 part 'inline/markdown.dart';
 part 'inline/token_spans.dart';
 part 'selection/area.dart';
+part 'selection/controller.dart';
 part 'selection/inline_proxy.dart';
 part 'selection/model.dart';
 part 'selection/pieces.dart';
@@ -119,10 +124,13 @@ class AnimatedStreamingMarkdown extends StreamingMarkdownRenderView {
     bool showCodeBlockCopyButton = false,
     bool enableSelection = false,
     SelectionStrategy selectionStrategy = SelectionStrategy.rich,
+    AnimatedMarkdownSelectionController? selectionController,
+    EdgeInsets selectionScrollPadding = const EdgeInsets.all(20),
     StreamingMarkdownThemeData theme = const StreamingMarkdownThemeData(),
     AnimatedMarkdownBlockBuilder? blockBuilder,
     AnimatedMarkdownImageBuilder? imageBuilder,
     AnimatedMarkdownLatexBuilder? latexBuilder,
+    AnimatedMarkdownIncompleteLinkTextBuilder? incompleteLinkTextBuilder,
     PlaceholderAlignment inlineImageAlignment = PlaceholderAlignment.baseline,
     ValueChanged<String>? onLinkTap,
   }) : super(
@@ -141,10 +149,13 @@ class AnimatedStreamingMarkdown extends StreamingMarkdownRenderView {
           showCodeBlockCopyButton: showCodeBlockCopyButton,
           enableTextSelection: enableSelection,
           selectionStrategy: selectionStrategy,
+          selectionController: selectionController,
+          selectionScrollPadding: selectionScrollPadding,
           markdownTheme: theme,
           customBlockBuilder: blockBuilder,
           customImageBuilder: imageBuilder,
           customLatexBuilder: latexBuilder,
+          incompleteLinkTextBuilder: incompleteLinkTextBuilder,
           inlineImageAlignment: inlineImageAlignment,
           onLinkTap: onLinkTap,
         );
@@ -181,10 +192,13 @@ class AnimatedStreamingMarkdown extends StreamingMarkdownRenderView {
     bool showCodeBlockCopyButton = false,
     bool enableSelection = false,
     SelectionStrategy selectionStrategy = SelectionStrategy.rich,
+    AnimatedMarkdownSelectionController? selectionController,
+    EdgeInsets selectionScrollPadding = const EdgeInsets.all(20),
     StreamingMarkdownThemeData theme = const StreamingMarkdownThemeData(),
     AnimatedMarkdownBlockBuilder? blockBuilder,
     AnimatedMarkdownImageBuilder? imageBuilder,
     AnimatedMarkdownLatexBuilder? latexBuilder,
+    AnimatedMarkdownIncompleteLinkTextBuilder? incompleteLinkTextBuilder,
     PlaceholderAlignment inlineImageAlignment = PlaceholderAlignment.baseline,
     ValueChanged<String>? onLinkTap,
   }) {
@@ -213,10 +227,13 @@ class AnimatedStreamingMarkdown extends StreamingMarkdownRenderView {
       showCodeBlockCopyButton: showCodeBlockCopyButton,
       enableSelection: enableSelection,
       selectionStrategy: selectionStrategy,
+      selectionController: selectionController,
+      selectionScrollPadding: selectionScrollPadding,
       theme: theme,
       blockBuilder: blockBuilder,
       imageBuilder: imageBuilder,
       latexBuilder: latexBuilder,
+      incompleteLinkTextBuilder: incompleteLinkTextBuilder,
       inlineImageAlignment: inlineImageAlignment,
       onLinkTap: onLinkTap,
     );
@@ -261,10 +278,13 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     this.showCodeBlockCopyButton = false,
     this.enableTextSelection = false,
     this.selectionStrategy = SelectionStrategy.rich,
+    this.selectionController,
+    this.selectionScrollPadding = const EdgeInsets.all(20),
     this.markdownTheme = const StreamingMarkdownThemeData(),
     this.customBlockBuilder,
     this.customImageBuilder,
     this.customLatexBuilder,
+    this.incompleteLinkTextBuilder,
     this.inlineImageAlignment = PlaceholderAlignment.baseline,
     this.onLinkTap,
   });
@@ -335,6 +355,15 @@ class StreamingMarkdownRenderView extends StatelessWidget {
   /// or rich HTML with a plain-text fallback.
   final SelectionStrategy selectionStrategy;
 
+  /// Optional source-backed selection controller.
+  ///
+  /// Box mode owns an internal controller when this is null. Sliver mode uses
+  /// the controller supplied by [AnimatedStreamingMarkdownSelectionArea].
+  final AnimatedMarkdownSelectionController? selectionController;
+
+  /// Padding maintained around a programmatically revealed selection endpoint.
+  final EdgeInsets selectionScrollPadding;
+
   /// Theme data for markdown block styling.
   final StreamingMarkdownThemeData markdownTheme;
 
@@ -346,6 +375,13 @@ class StreamingMarkdownRenderView extends StatelessWidget {
 
   /// Optional LaTeX/math override hook.
   final StreamingMarkdownLatexBuilder? customLatexBuilder;
+
+  /// Optional presentation policy for a semantic incomplete inline link.
+  ///
+  /// When omitted, no text is shown until a destination starts arriving; the
+  /// current destination is then shown until completion. A completed link
+  /// always follows the normal linked-label rendering path.
+  final StreamingMarkdownIncompleteLinkTextBuilder? incompleteLinkTextBuilder;
 
   /// Alignment used for inline markdown image widget spans.
   final PlaceholderAlignment inlineImageAlignment;
@@ -583,16 +619,53 @@ class StreamingMarkdownRenderView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final List<MarkdownRenderNode> blocks = _collectRenderableBlocks(nodes);
+    final _MarkdownSelectionHost? sliverSelectionHost =
+        enableTextSelection && sliver
+            ? _MarkdownSelectionHostScope.maybeOf(context)
+            : null;
+    assert(
+      !enableTextSelection || !sliver || sliverSelectionHost != null,
+      'Selectable sliver Markdown must be inside an '
+      'AnimatedStreamingMarkdownSelectionArea.',
+    );
+    final bool selectionEnabled =
+        enableTextSelection && (!sliver || sliverSelectionHost != null);
     if (blocks.isEmpty) {
       final Widget empty = Center(
         child: Text(emptyPlaceholder, textAlign: TextAlign.center),
       );
-      if (!sliver) {
-        return empty;
+      final Widget emptyContent = !sliver
+          ? empty
+          : SliverFillRemaining(
+              hasScrollBody: false,
+              child: Padding(padding: padding, child: empty),
+            );
+      if (!selectionEnabled) {
+        return emptyContent;
       }
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Padding(padding: padding, child: empty),
+      final _MarkdownSelectionDocument emptyDocument =
+          _MarkdownSelectionDocument(
+        projection: const _MarkdownSelectionProjection(
+          <_MarkdownSelectionSegment>[],
+        ),
+        blockRanges: const <String, _MarkdownSelectionBlockRange>{},
+        selectionStrategy: selectionStrategy,
+        allowUnclosedInlineDelimiters: allowUnclosedInlineDelimiters,
+        selectionColor: markdownTheme.selectionColor ?? const Color(0x6658A6FF),
+      );
+      if (sliver) {
+        return _MarkdownSelectionDocumentRegistration(
+          host: sliverSelectionHost!,
+          document: emptyDocument,
+          rendererController: selectionController,
+          child: emptyContent,
+        );
+      }
+      return _MarkdownSelectionArea(
+        document: emptyDocument,
+        selectionController: selectionController,
+        scrollPadding: selectionScrollPadding,
+        child: emptyContent,
       );
     }
 
@@ -601,7 +674,6 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     final String refsDigest = _linkReferencesDigest(linkReferences);
     final String renderConfigDigest = _renderConfigDigest(context);
     final bool compactSettledTokens = _shouldCompactSettledTokens();
-    final bool selectionEnabled = enableTextSelection && !sliver;
     final _MarkdownSelectionProjection? selectionProjection = selectionEnabled
         ? _buildSelectionProjection(
             blocks,
@@ -613,6 +685,17 @@ class StreamingMarkdownRenderView extends StatelessWidget {
         selectionProjection == null
             ? const <String, _MarkdownSelectionBlockRange>{}
             : _buildSelectionBlockRanges(blocks, selectionProjection);
+    final _MarkdownSelectionDocument? selectionDocument =
+        selectionProjection == null
+            ? null
+            : _MarkdownSelectionDocument(
+                projection: selectionProjection,
+                blockRanges: blockRanges,
+                selectionStrategy: selectionStrategy,
+                allowUnclosedInlineDelimiters: allowUnclosedInlineDelimiters,
+                selectionColor:
+                    markdownTheme.selectionColor ?? const Color(0x6658A6FF),
+              );
 
     final Widget content = _SequencedBlockList(
       blocks: blocks,
@@ -632,6 +715,7 @@ class StreamingMarkdownRenderView extends StatelessWidget {
             refsDigest,
             renderConfigDigest,
           ),
+          selectionIdentity: _blockIdentity(block),
           node: block,
           linkReferences: linkReferences,
           footnoteNumbers: footnoteNumbers,
@@ -654,22 +738,20 @@ class StreamingMarkdownRenderView extends StatelessWidget {
     if (!selectionEnabled) {
       return content;
     }
+    if (sliver) {
+      return _MarkdownSelectionDocumentRegistration(
+        host: sliverSelectionHost!,
+        document: selectionDocument!,
+        rendererController: selectionController,
+        child: content,
+      );
+    }
     return _MarkdownSelectionArea(
-      projection: selectionProjection!,
-      selectionStrategy: selectionStrategy,
-      allowUnclosedInlineDelimiters: allowUnclosedInlineDelimiters,
-      selectionColor: markdownTheme.selectionColor ?? const Color(0x6658A6FF),
-      useSourceSelectionVisual: true,
-      lockFinalizedSelectionVisual: _shouldLockFinalizedSelectionVisual(),
+      document: selectionDocument!,
+      selectionController: selectionController,
+      scrollPadding: selectionScrollPadding,
       child: content,
     );
-  }
-
-  bool _shouldLockFinalizedSelectionVisual() {
-    return tokenArrivalDelay > Duration.zero ||
-        _resolvedTokenFadeInDuration() > Duration.zero ||
-        tokenAnimationBuilder != null ||
-        tokenAnimationPaused;
   }
 
   Map<String, _MarkdownSelectionBlockRange> _buildSelectionBlockRanges(

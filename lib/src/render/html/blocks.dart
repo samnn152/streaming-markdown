@@ -35,18 +35,59 @@ extension _HtmlBlockRendererBlocks on _HtmlBlockRenderer {
     if (normalized.isEmpty) {
       return const SizedBox.shrink();
     }
-    return Text(normalized, style: _paragraphStyle);
+    final (int, int) selectionStarts = _selectionStartsFor(normalized);
+    final _MarkdownInlineSelectionRegistry? registry =
+        _MarkdownInlineSelectionRegistryScope.maybeOf(context);
+    final SelectionRegistrar? registrar = SelectionContainer.maybeOf(context);
+
+    final TextSpan textSpan =
+        TextSpan(style: _paragraphStyle, text: normalized);
+    if (registrar == null) {
+      return Text.rich(textSpan);
+    }
+    return _SelectableInlineTextProxy(
+      text: textSpan,
+      plainText: normalized,
+      textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+      textScale: _markdownTextScaleOf(context),
+      registrar: registrar,
+      selectionRegistry: registry,
+      absolutePlainTextStart: selectionStarts.$1,
+      compactPlainTextStart: selectionStarts.$2,
+      selectionColor: selectionColor,
+      child: SelectionContainer.disabled(child: Text.rich(textSpan)),
+    );
   }
 
   Widget _buildParagraph(List<html_dom.Node> nodes, {TextStyle? style}) {
     final TextStyle resolvedStyle = style ?? _paragraphStyle;
     final List<InlineSpan> spans = _buildInlineSpans(nodes, resolvedStyle);
-    final String plain =
-        spans.map((InlineSpan span) => span.toPlainText()).join();
+    final String plain = _htmlInlineSelectionText(nodes);
     if (plain.trim().isEmpty) {
       return const SizedBox.shrink();
     }
-    return Text.rich(TextSpan(style: resolvedStyle, children: spans));
+    final (int, int) selectionStarts = _selectionStartsFor(plain);
+    final _MarkdownInlineSelectionRegistry? registry =
+        _MarkdownInlineSelectionRegistryScope.maybeOf(context);
+    final SelectionRegistrar? registrar = SelectionContainer.maybeOf(context);
+
+    final TextSpan textSpan = TextSpan(style: resolvedStyle, children: spans);
+    final TextSpan selectionText = TextSpan(style: resolvedStyle, text: plain);
+    if (registrar == null) {
+      return Text.rich(textSpan);
+    }
+    return _SelectableInlineTextProxy(
+      text: selectionText,
+      plainText: plain,
+      textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+      textScale: _markdownTextScaleOf(context),
+      registrar: registrar,
+      selectionRegistry: registry,
+      absolutePlainTextStart: selectionStarts.$1,
+      compactPlainTextStart: selectionStarts.$2,
+      selectionColor: selectionColor,
+      child: SelectionContainer.disabled(child: Text.rich(textSpan)),
+    );
   }
 
   Widget _buildCodeBlock(String raw) {
@@ -54,6 +95,31 @@ extension _HtmlBlockRendererBlocks on _HtmlBlockRenderer {
     if (code.isEmpty) {
       return const SizedBox.shrink();
     }
+    final (int, int) selectionStarts = _selectionStartsFor(code);
+    final _MarkdownInlineSelectionRegistry? registry =
+        _MarkdownInlineSelectionRegistryScope.maybeOf(context);
+    final SelectionRegistrar? registrar = SelectionContainer.maybeOf(context);
+
+    final TextStyle codeStyle = _paragraphStyle.copyWith(
+      fontFamily: 'monospace',
+      color: _HtmlBlockRenderer._codeForegroundColor,
+    );
+    final TextSpan textSpan = TextSpan(style: codeStyle, text: code);
+    final Widget codeWidget = registrar == null
+        ? Text.rich(textSpan)
+        : _SelectableInlineTextProxy(
+            text: textSpan,
+            plainText: code,
+            textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+            textScale: _markdownTextScaleOf(context),
+            registrar: registrar,
+            selectionRegistry: registry,
+            absolutePlainTextStart: selectionStarts.$1,
+            compactPlainTextStart: selectionStarts.$2,
+            selectionColor: selectionColor,
+            child: SelectionContainer.disabled(child: Text.rich(textSpan)),
+          );
+
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -63,15 +129,7 @@ extension _HtmlBlockRendererBlocks on _HtmlBlockRenderer {
       padding: const EdgeInsets.all(10),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
-        child: SelectableText(
-          code,
-          style: const TextStyle(
-            color: _HtmlBlockRenderer._codeForegroundColor,
-            fontFamily: 'monospace',
-            fontSize: 13,
-            height: 1.4,
-          ),
-        ),
+        child: codeWidget,
       ),
     );
   }

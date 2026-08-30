@@ -6,7 +6,7 @@ import '../../domain/models/chat_connection_settings.dart';
 
 final class ChatRemoteDataSource {
   ChatRemoteDataSource({http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client();
+      : _httpClient = httpClient ?? http.Client();
 
   final http.Client _httpClient;
 
@@ -64,10 +64,9 @@ final class ChatRemoteDataSource {
       },
     );
 
-    await for (final String line
-        in response.stream
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())) {
+    await for (final String line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
       if (line.trim().isEmpty) {
         continue;
       }
@@ -236,10 +235,9 @@ final class ChatRemoteDataSource {
     String Function(Map<String, dynamic> json) extract,
   ) async* {
     final List<String> eventDataLines = <String>[];
-    await for (final String line
-        in response.stream
-            .transform(utf8.decoder)
-            .transform(const LineSplitter())) {
+    await for (final String line in response.stream
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())) {
       if (line.isEmpty) {
         if (eventDataLines.isNotEmpty) {
           final String chunk = _extractSseChunk(eventDataLines, extract);

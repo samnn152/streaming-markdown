@@ -1,3 +1,5 @@
+import 'inline_link.dart';
+
 /// Normalized markdown block passed from the parser to the renderer.
 ///
 /// A render node keeps both the original source slice ([raw]) and parser
@@ -66,6 +68,18 @@ class MarkdownRenderNode {
 
   /// Human-readable content extracted from [raw] when available.
   final String content;
+
+  /// Direct inline links found in [raw], including an incomplete link at the
+  /// active streaming tail.
+  ///
+  /// Code blocks intentionally expose no inline links because their contents
+  /// are literal Markdown source.
+  List<MarkdownInlineLink> get inlineLinks {
+    if (type == 'fenced_code_block' || type == 'indented_code_block') {
+      return const <MarkdownInlineLink>[];
+    }
+    return parseMarkdownInlineLinks(raw);
+  }
 }
 
 /// Preferred public name for a block ready to render.

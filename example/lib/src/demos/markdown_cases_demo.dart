@@ -6,6 +6,8 @@ import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show ScrollDirection;
 
+import '../flutter_sdk_compat.dart';
+
 void main() {
   runApp(const MarkdownCasesDemoApp());
 }
@@ -180,9 +182,8 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
     var index = 0;
     while (index < markdown.length) {
       final int desiredBreak = index + _streamChunkLength;
-      final int searchStart = desiredBreak > markdown.length
-          ? markdown.length
-          : desiredBreak;
+      final int searchStart =
+          desiredBreak > markdown.length ? markdown.length : desiredBreak;
       final int nextBreak = markdown.indexOf(RegExp(r'[\s>]'), searchStart);
       final int end = nextBreak == -1
           ? markdown.length
@@ -265,9 +266,8 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
           IconButton(
             tooltip: 'Replay stream',
             icon: const Icon(Icons.play_arrow_outlined),
-            onPressed: _loading
-                ? null
-                : () => unawaited(_renderActiveMarkdown()),
+            onPressed:
+                _loading ? null : () => unawaited(_renderActiveMarkdown()),
           ),
           IconButton(
             tooltip: _renderPaused ? 'Resume render' : 'Pause render',
@@ -288,9 +288,8 @@ class _MarkdownCasesDemoPageState extends State<MarkdownCasesDemoPage> {
             onPressed: _toggleSource,
           ),
           IconButton(
-            tooltip: _debugTokens
-                ? 'Hide token merge trace'
-                : 'Trace token merge',
+            tooltip:
+                _debugTokens ? 'Hide token merge trace' : 'Trace token merge',
             icon: Icon(
               _debugTokens
                   ? Icons.visibility_off_outlined
@@ -392,12 +391,10 @@ class _CaseList extends StatelessWidget {
         itemBuilder: (BuildContext context, int index) {
           final bool allCases = index == 0;
           final int caseIndex = index - 1;
-          final bool selected = allCases
-              ? selectedIndex < 0
-              : selectedIndex == caseIndex;
-          final String title = allCases
-              ? 'All cases'
-              : _displayMarkdownCases[caseIndex].title;
+          final bool selected =
+              allCases ? selectedIndex < 0 : selectedIndex == caseIndex;
+          final String title =
+              allCases ? 'All cases' : _displayMarkdownCases[caseIndex].title;
           final String group = allCases
               ? '${_regularMarkdownCases.length} sections'
               : _displayMarkdownCases[caseIndex].group;
@@ -409,7 +406,7 @@ class _CaseList extends StatelessWidget {
               child: Material(
                 color: selected
                     ? colors.secondaryContainer
-                    : colors.surfaceContainerHighest,
+                    : flutterSurfaceContainerHighest(colors),
                 borderRadius: BorderRadius.circular(8),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(8),
@@ -427,7 +424,9 @@ class _CaseList extends StatelessWidget {
                           title,
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
                               ?.copyWith(fontWeight: FontWeight.w700),
                         ),
                         const SizedBox(height: 4),
@@ -610,7 +609,7 @@ class _PreviewPaneState extends State<_PreviewPane> {
                     ),
                     tableBorderColor: colors.outlineVariant,
                     tableHeaderBackgroundColor: Color.alphaBlend(
-                      colors.onSurface.withValues(alpha: 0.06),
+                      colors.onSurface.withAlpha(15),
                       colors.surface,
                     ),
                     thematicBreakColor: const Color(0xFF94A3B8),
@@ -885,15 +884,15 @@ class _MarkdownPreviewSurfaceState extends State<_MarkdownPreviewSurface> {
           alignment: Alignment.centerLeft,
           color: widget.enableSelection
               ? colors.primaryContainer
-              : colors.surfaceContainerHighest,
+              : flutterSurfaceContainerHighest(colors),
           child: Text(
             widget.title,
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: widget.enableSelection
-                  ? colors.onPrimaryContainer
-                  : colors.onSurfaceVariant,
-            ),
+                  fontWeight: FontWeight.w700,
+                  color: widget.enableSelection
+                      ? colors.onPrimaryContainer
+                      : colors.onSurfaceVariant,
+                ),
           ),
         ),
         Expanded(
@@ -982,27 +981,27 @@ class _ParserStatusBar extends StatelessWidget {
     final String statusText = error != null
         ? 'Parser error'
         : renderPaused
-        ? currentResult == null
-              ? 'Paused'
-              : 'Paused $progressPercent% - ${currentResult.mode} - '
+            ? currentResult == null
+                ? 'Paused'
+                : 'Paused $progressPercent% - ${currentResult.mode} - '
                     '${currentResult.blocks.length} render nodes'
-        : loading
-        ? currentResult == null
-              ? 'Streaming markdown'
-              : 'Streaming $progressPercent% - ${currentResult.mode} - '
-                    '${currentResult.blocks.length} render nodes'
-        : currentResult == null
-        ? 'Waiting'
-        : '${currentResult.mode} - '
-              '${currentResult.blocks.length} render nodes - '
-              '${currentResult.totalTime.inMilliseconds} ms';
+            : loading
+                ? currentResult == null
+                    ? 'Streaming markdown'
+                    : 'Streaming $progressPercent% - ${currentResult.mode} - '
+                        '${currentResult.blocks.length} render nodes'
+                : currentResult == null
+                    ? 'Waiting'
+                    : '${currentResult.mode} - '
+                        '${currentResult.blocks.length} render nodes - '
+                        '${currentResult.totalTime.inMilliseconds} ms';
 
     return Container(
       height: 40,
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 16),
       alignment: Alignment.centerLeft,
-      color: colors.surfaceContainerHighest,
+      color: flutterSurfaceContainerHighest(colors),
       child: Row(
         children: [
           if (renderPaused)
@@ -1036,9 +1035,9 @@ class _ParserStatusBar extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: colors.primary,
-              fontWeight: FontWeight.w600,
-            ),
+                  color: colors.primary,
+                  fontWeight: FontWeight.w600,
+                ),
           ),
         ],
       ),
@@ -1091,11 +1090,10 @@ class _SourcePaneState extends State<_SourcePane> {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle codeStyle =
-        Theme.of(context).textTheme.bodySmall?.copyWith(
-          fontFamily: 'monospace',
-          height: 1.45,
-        ) ??
+    final TextStyle codeStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              height: 1.45,
+            ) ??
         const TextStyle(fontFamily: 'monospace', height: 1.45);
 
     return ColoredBox(
@@ -1118,160 +1116,160 @@ class _TokenAnimationPreset {
 
 final List<_TokenAnimationPreset> _tokenAnimationPresets =
     <_TokenAnimationPreset>[
-      _TokenAnimationPreset(
-        name: 'Fade (default)',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          return Opacity(opacity: token.value, child: token.child);
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Slide up',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOutCubic.transform(token.value);
-          return Opacity(
-            opacity: t,
-            child: Transform.translate(
-              offset: Offset(0, (1 - t) * 10),
-              child: token.child,
-            ),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Slide right',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOut.transform(token.value);
-          return Opacity(
-            opacity: t,
-            child: Transform.translate(
-              offset: Offset((1 - t) * -14, 0),
-              child: token.child,
-            ),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Scale pop',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOutBack.transform(token.value);
-          return Transform.scale(
-            scale: 0.84 + (0.16 * t),
+  _TokenAnimationPreset(
+    name: 'Fade (default)',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      return Opacity(opacity: token.value, child: token.child);
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Slide up',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOutCubic.transform(token.value);
+      return Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset(0, (1 - t) * 10),
+          child: token.child,
+        ),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Slide right',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOut.transform(token.value);
+      return Opacity(
+        opacity: t,
+        child: Transform.translate(
+          offset: Offset((1 - t) * -14, 0),
+          child: token.child,
+        ),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Scale pop',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOutBack.transform(token.value);
+      return Transform.scale(
+        scale: 0.84 + (0.16 * t),
+        alignment: Alignment.bottomLeft,
+        child: Opacity(opacity: token.value, child: token.child),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Rotate in',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOutBack.transform(token.value);
+      return Opacity(
+        opacity: Curves.easeOut.transform(token.value),
+        child: Transform.translate(
+          offset: Offset((1 - t) * -10, 0),
+          child: Transform.rotate(
+            angle: (1 - t) * -0.42,
             alignment: Alignment.bottomLeft,
-            child: Opacity(opacity: token.value, child: token.child),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Rotate in',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOutBack.transform(token.value);
-          return Opacity(
-            opacity: Curves.easeOut.transform(token.value),
-            child: Transform.translate(
-              offset: Offset((1 - t) * -10, 0),
-              child: Transform.rotate(
-                angle: (1 - t) * -0.42,
-                alignment: Alignment.bottomLeft,
-                child: Transform.scale(
-                  scale: 0.94 + (0.06 * t),
-                  alignment: Alignment.bottomLeft,
-                  child: token.child,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Gravity',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double fall = Curves.bounceOut.transform(token.value);
-          final double fade = Curves.easeOutCubic.transform(token.value);
-          return Opacity(
-            opacity: fade,
-            child: Transform.translate(
-              offset: Offset(0, -64 * (1 - fall)),
-              child: Transform.scale(
-                scale: 0.96 + (0.04 * fall),
-                alignment: Alignment.bottomCenter,
-                child: token.child,
-              ),
-            ),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Blur to clear',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOut.transform(token.value);
-          return ImageFiltered(
-            imageFilter: ImageFilter.blur(
-              sigmaX: (1 - t) * 2.6,
-              sigmaY: (1 - t) * 2.6,
-            ),
-            child: Opacity(opacity: t, child: token.child),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Wave wobble',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = token.value;
-          final double wave = math.sin(t * math.pi * 3) * (1 - t) * 7;
-          return Opacity(
-            opacity: Curves.easeOut.transform(t),
-            child: Transform.translate(
-              offset: Offset(0, -wave),
+            child: Transform.scale(
+              scale: 0.94 + (0.06 * t),
+              alignment: Alignment.bottomLeft,
               child: token.child,
             ),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Flip Y',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.easeOutCubic.transform(token.value);
-          final Matrix4 matrix = Matrix4.identity()
-            ..setEntry(3, 2, 0.001)
-            ..rotateY((1 - t) * -1.1);
-          return Transform(
-            alignment: Alignment.centerLeft,
-            transform: matrix,
-            child: Opacity(opacity: t, child: token.child),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Elastic pop',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = Curves.elasticOut.transform(token.value);
-          return Transform.scale(
-            scale: 0.7 + (0.3 * t),
+          ),
+        ),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Gravity',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double fall = Curves.bounceOut.transform(token.value);
+      final double fade = Curves.easeOutCubic.transform(token.value);
+      return Opacity(
+        opacity: fade,
+        child: Transform.translate(
+          offset: Offset(0, -64 * (1 - fall)),
+          child: Transform.scale(
+            scale: 0.96 + (0.04 * fall),
+            alignment: Alignment.bottomCenter,
+            child: token.child,
+          ),
+        ),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Blur to clear',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOut.transform(token.value);
+      return ImageFiltered(
+        imageFilter: ImageFilter.blur(
+          sigmaX: (1 - t) * 2.6,
+          sigmaY: (1 - t) * 2.6,
+        ),
+        child: Opacity(opacity: t, child: token.child),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Wave wobble',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = token.value;
+      final double wave = math.sin(t * math.pi * 3) * (1 - t) * 7;
+      return Opacity(
+        opacity: Curves.easeOut.transform(t),
+        child: Transform.translate(
+          offset: Offset(0, -wave),
+          child: token.child,
+        ),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Flip Y',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.easeOutCubic.transform(token.value);
+      final Matrix4 matrix = Matrix4.identity()
+        ..setEntry(3, 2, 0.001)
+        ..rotateY((1 - t) * -1.1);
+      return Transform(
+        alignment: Alignment.centerLeft,
+        transform: matrix,
+        child: Opacity(opacity: t, child: token.child),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Elastic pop',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = Curves.elasticOut.transform(token.value);
+      return Transform.scale(
+        scale: 0.7 + (0.3 * t),
+        alignment: Alignment.bottomLeft,
+        child: Opacity(opacity: token.value, child: token.child),
+      );
+    },
+  ),
+  _TokenAnimationPreset(
+    name: 'Glitchy',
+    builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
+      final double t = token.value;
+      final double shakeX = math.sin(t * math.pi * 22) * (1 - t) * 4.0;
+      final double shakeY = math.cos(t * math.pi * 18) * (1 - t) * 2.0;
+      return Opacity(
+        opacity: Curves.easeOut.transform(t),
+        child: Transform.translate(
+          offset: Offset(shakeX, shakeY),
+          child: Transform.scale(
+            scale: 0.92 + (0.08 * Curves.easeOutBack.transform(t)),
             alignment: Alignment.bottomLeft,
-            child: Opacity(opacity: token.value, child: token.child),
-          );
-        },
-      ),
-      _TokenAnimationPreset(
-        name: 'Glitchy',
-        builder: (BuildContext context, StreamingMarkdownAnimatedToken token) {
-          final double t = token.value;
-          final double shakeX = math.sin(t * math.pi * 22) * (1 - t) * 4.0;
-          final double shakeY = math.cos(t * math.pi * 18) * (1 - t) * 2.0;
-          return Opacity(
-            opacity: Curves.easeOut.transform(t),
-            child: Transform.translate(
-              offset: Offset(shakeX, shakeY),
-              child: Transform.scale(
-                scale: 0.92 + (0.08 * Curves.easeOutBack.transform(t)),
-                alignment: Alignment.bottomLeft,
-                child: token.child,
-              ),
-            ),
-          );
-        },
-      ),
-    ];
+            child: token.child,
+          ),
+        ),
+      );
+    },
+  ),
+];
 
 class _MarkdownCase {
   const _MarkdownCase({

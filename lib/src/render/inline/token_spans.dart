@@ -21,43 +21,32 @@ extension _StreamingMarkdownInlineTokenSpans on StreamingMarkdownRenderView {
     required DateTime? tokenScheduleOrigin,
     required StreamingMarkdownTokenAnimationBuilder? tokenAnimationBuilder,
     required bool animatePerWord,
-    _MarkdownSelectionRange? sourceSelectionRange,
-    Color? sourceSelectionColor,
+    int plainTextOffset = 0,
+    ValueChanged<int>? onTokenReveal,
     VoidCallback? onTap,
   }) {
     final bool preserveStaticTokenLayout =
         !animatePerWord && fadeDuration > Duration.zero;
     if (!animatePerWord && !preserveStaticTokenLayout && onTap == null) {
-      spans.addAll(
-        _sourceHighlightedTextSpans(
-          text,
-          style,
-          sourceSelectionRange,
-          sourceSelectionColor,
-        ),
-      );
+      spans.add(TextSpan(text: text, style: style));
       return startTokenIndex + _inlineWordCount(text);
     }
     if (!animatePerWord && !preserveStaticTokenLayout) {
-      final Widget textWidget =
-          sourceSelectionRange == null || sourceSelectionColor == null
-              ? Text(text, style: style)
-              : Text.rich(
-                  TextSpan(
-                    style: style,
-                    children: _sourceHighlightedTextSpans(
-                      text,
-                      style,
-                      sourceSelectionRange,
-                      sourceSelectionColor,
-                    ),
-                  ),
-                );
       spans.add(
         WidgetSpan(
           alignment: PlaceholderAlignment.baseline,
           baseline: TextBaseline.alphabetic,
-          child: GestureDetector(onTap: onTap, child: textWidget),
+          child: _MarkdownSelectableTextSpan(
+            semanticRange: TextRange(
+              start: plainTextOffset,
+              end: plainTextOffset + text.length,
+            ),
+            text: text,
+            child: GestureDetector(
+              onTap: onTap,
+              child: Text(text, style: style),
+            ),
+          ),
         ),
       );
       return startTokenIndex + _inlineWordCount(text);
@@ -69,24 +58,10 @@ extension _StreamingMarkdownInlineTokenSpans on StreamingMarkdownRenderView {
       if (piece.isEmpty) {
         continue;
       }
-      final _MarkdownSelectionRange? pieceSelectionRange =
-          _localRangeForTextSlice(
-        sourceSelectionRange,
-        start: match.start,
-        length: piece.length,
-      );
-
       if (piece.trim().isEmpty) {
         // Newlines must stay as raw text spans so blocks like quote/code/footnote
         // preserve line breaks exactly as source.
-        spans.addAll(
-          _sourceHighlightedTextSpans(
-            piece,
-            style,
-            pieceSelectionRange,
-            sourceSelectionColor,
-          ),
-        );
+        spans.add(TextSpan(text: piece, style: style));
         continue;
       }
 
@@ -109,70 +84,62 @@ extension _StreamingMarkdownInlineTokenSpans on StreamingMarkdownRenderView {
           ),
         );
       } else {
-        tokenWidget =
-            pieceSelectionRange == null || sourceSelectionColor == null
-                ? Text(piece, style: style)
-                : Text.rich(
-                    TextSpan(
-                      style: style,
-                      children: _sourceHighlightedTextSpans(
-                        piece,
-                        style,
-                        pieceSelectionRange,
-                        sourceSelectionColor,
-                      ),
-                    ),
-                  );
+        tokenWidget = Text(piece, style: style);
       }
 
+      final Widget interactiveToken = onTap == null
+          ? tokenWidget
+          : (debugTokenHighlight
+              ? InkWell(
+                  onTap: onTap,
+                  borderRadius: BorderRadius.circular(4),
+                  child: tokenWidget,
+                )
+              : GestureDetector(onTap: onTap, child: tokenWidget));
+      Widget markSelectable(Widget child) => _MarkdownSelectableTextSpan(
+            semanticRange: TextRange(
+              start: plainTextOffset + match.start,
+              end: plainTextOffset + match.end,
+            ),
+            text: piece,
+            child: child,
+          );
       if (!animatePerWord) {
         spans.add(
           WidgetSpan(
             alignment: PlaceholderAlignment.baseline,
             baseline: TextBaseline.alphabetic,
-            child: onTap == null
-                ? tokenWidget
-                : (debugTokenHighlight
-                    ? InkWell(
-                        onTap: onTap,
-                        borderRadius: BorderRadius.circular(4),
-                        child: tokenWidget,
-                      )
-                    : GestureDetector(onTap: onTap, child: tokenWidget)),
+            child: markSelectable(interactiveToken),
           ),
         );
         tokenIndex += 1;
         continue;
       }
 
+      final Widget animatedToken = _FadeInTokenHost(
+        key: ValueKey<String>('token_${tokenIndex}_${piece.hashCode}'),
+        // Use absolute token index in block so delays do not reset
+        // across inline style segments (links/bold/italic/code...).
+        initialDelay: tokenScheduleOrigin == null
+            ? tokenStaggerDelay * tokenIndex
+            : Duration.zero,
+        scheduledStart: tokenScheduleOrigin?.add(
+          tokenStaggerDelay * tokenIndex,
+        ),
+        duration: fadeDuration,
+        curve: fadeCurve,
+        animationBuilder: tokenAnimationBuilder,
+        onReveal: onTokenReveal == null
+            ? null
+            : () => onTokenReveal(plainTextOffset + match.end),
+        onFadeInEnd: onTokenFadeInEnd,
+        child: interactiveToken,
+      );
       spans.add(
         WidgetSpan(
           alignment: PlaceholderAlignment.baseline,
           baseline: TextBaseline.alphabetic,
-          child: _FadeInTokenHost(
-            key: ValueKey<String>('token_${tokenIndex}_${piece.hashCode}'),
-            // Use absolute token index in block so delays do not reset
-            // across inline style segments (links/bold/italic/code...).
-            initialDelay: tokenScheduleOrigin == null
-                ? tokenStaggerDelay * tokenIndex
-                : Duration.zero,
-            scheduledStart: tokenScheduleOrigin?.add(
-              tokenStaggerDelay * tokenIndex,
-            ),
-            duration: fadeDuration,
-            curve: fadeCurve,
-            animationBuilder: tokenAnimationBuilder,
-            onFadeInEnd: onTokenFadeInEnd,
-            child: onTap == null
-                ? tokenWidget
-                : (debugTokenHighlight
-                    ? InkWell(
-                        onTap: onTap,
-                        borderRadius: BorderRadius.circular(4),
-                        child: tokenWidget,
-                      )
-                    : GestureDetector(onTap: onTap, child: tokenWidget)),
-          ),
+          child: markSelectable(animatedToken),
         ),
       );
       tokenIndex += 1;
@@ -193,35 +160,58 @@ extension _StreamingMarkdownInlineTokenSpans on StreamingMarkdownRenderView {
     TextBaseline? baseline,
     int tokenUnits = 1,
     bool animate = true,
+    int? revealedTextEnd,
+    ValueChanged<int>? onTokenReveal,
+    TextRange? selectableRange,
+    String? selectableText,
+    bool paintFullSelectionBounds = false,
   }) {
+    Widget markSelectable(Widget visualChild) {
+      final TextRange? range = selectableRange;
+      final String? text = selectableText;
+      if (range == null || text == null || text.isEmpty) {
+        return visualChild;
+      }
+      return _MarkdownSelectableTextSpan(
+        semanticRange: range,
+        text: text,
+        paintFullSelectionBounds: paintFullSelectionBounds,
+        child: visualChild,
+      );
+    }
+
     if (!animate) {
       spans.add(
         WidgetSpan(
           alignment: alignment,
           baseline: baseline,
-          child: child,
+          child: markSelectable(child),
         ),
       );
       return tokenIndex + (tokenUnits <= 0 ? 1 : tokenUnits);
     }
+    final Widget animatedChild = _FadeInTokenHost(
+      key: ValueKey<String>('widget_token_${tokenIndex}_${child.hashCode}'),
+      initialDelay: tokenScheduleOrigin == null
+          ? tokenStaggerDelay * tokenIndex
+          : Duration.zero,
+      scheduledStart: tokenScheduleOrigin?.add(
+        tokenStaggerDelay * tokenIndex,
+      ),
+      duration: fadeDuration,
+      curve: fadeCurve,
+      animationBuilder: tokenAnimationBuilder,
+      onReveal: onTokenReveal == null || revealedTextEnd == null
+          ? null
+          : () => onTokenReveal(revealedTextEnd),
+      onFadeInEnd: onTokenFadeInEnd,
+      child: child,
+    );
     spans.add(
       WidgetSpan(
         alignment: alignment,
         baseline: baseline,
-        child: _FadeInTokenHost(
-          key: ValueKey<String>('widget_token_${tokenIndex}_${child.hashCode}'),
-          initialDelay: tokenScheduleOrigin == null
-              ? tokenStaggerDelay * tokenIndex
-              : Duration.zero,
-          scheduledStart: tokenScheduleOrigin?.add(
-            tokenStaggerDelay * tokenIndex,
-          ),
-          duration: fadeDuration,
-          curve: fadeCurve,
-          animationBuilder: tokenAnimationBuilder,
-          onFadeInEnd: onTokenFadeInEnd,
-          child: child,
-        ),
+        child: markSelectable(animatedChild),
       ),
     );
     return tokenIndex + (tokenUnits <= 0 ? 1 : tokenUnits);
@@ -257,50 +247,4 @@ extension _StreamingMarkdownInlineTokenSpans on StreamingMarkdownRenderView {
     }
     return total;
   }
-}
-
-List<TextSpan> _sourceHighlightedTextSpans(
-  String text,
-  TextStyle style,
-  _MarkdownSelectionRange? range,
-  Color? color,
-) {
-  if (text.isEmpty || range == null || color == null) {
-    return <TextSpan>[TextSpan(text: text, style: style)];
-  }
-  final int start = range.start.clamp(0, text.length);
-  final int end = range.end.clamp(start, text.length);
-  if (start >= end) {
-    return <TextSpan>[TextSpan(text: text, style: style)];
-  }
-
-  final TextStyle highlightedStyle = style.copyWith(backgroundColor: color);
-  final List<TextSpan> spans = <TextSpan>[];
-  if (start > 0) {
-    spans.add(TextSpan(text: text.substring(0, start), style: style));
-  }
-  spans
-      .add(TextSpan(text: text.substring(start, end), style: highlightedStyle));
-  if (end < text.length) {
-    spans.add(TextSpan(text: text.substring(end), style: style));
-  }
-  return spans;
-}
-
-_MarkdownSelectionRange? _localRangeForTextSlice(
-  _MarkdownSelectionRange? range, {
-  required int start,
-  required int length,
-}) {
-  if (range == null || length <= 0) {
-    return null;
-  }
-  final int end = start + length;
-  if (range.end <= start || range.start >= end) {
-    return null;
-  }
-  return _MarkdownSelectionRange(
-    start: (range.start - start).clamp(0, length),
-    end: (range.end - start).clamp(0, length),
-  );
 }

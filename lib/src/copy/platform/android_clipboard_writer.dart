@@ -8,8 +8,9 @@ class AndroidClipboardWriter extends PlainTextClipboardWriter {
     required String plainText,
     required String htmlText,
   }) {
-    throw UnsupportedError(
-      'Android rich clipboard bridge is not registered yet',
-    );
+    return markdownClipboardChannel.invokeMethod<void>('writeRichText', {
+      'plainText': plainText,
+      'htmlText': htmlText,
+    });
   }
 }

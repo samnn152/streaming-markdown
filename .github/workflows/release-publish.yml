@@ -10,6 +10,42 @@ permissions:
   id-token: write
 
 jobs:
+  compatibility:
+    name: Flutter 3.10.7 compatibility
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter 3.10.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.10.7'
+          cache: true
+
+      - name: Install package dependencies
+        run: flutter pub get
+
+      - name: Analyze package
+        run: dart analyze
+
+      - name: Run package tests
+        env:
+          SKIP_GOLDENS: 'true'
+        run: flutter test
+
+      - name: Run selection tests in Chrome
+        run: >-
+          flutter test --platform chrome
+          test/render/selection_components_test.dart
+          test/render/selection_controller_test.dart
+          test/render/selection_scroll_visual_test.dart
+          test/render/selection_textfield_reference_test.dart
+
+      - name: Build Flutter web example
+        working-directory: example
+        run: flutter build web
+
   test:
     name: Test tagged release
     runs-on: ubuntu-latest
@@ -35,12 +71,35 @@ jobs:
       - name: Run render tests
         run: flutter test
 
+      - name: Run selection tests in Chrome
+        run: >-
+          flutter test --platform chrome
+          test/render/selection_components_test.dart
+          test/render/selection_controller_test.dart
+          test/render/selection_scroll_visual_test.dart
+          test/render/selection_textfield_reference_test.dart
+
+      - name: Build Flutter web example
+        working-directory: example
+        run: flutter build web
+
+      - name: Verify Flutter WebAssembly build
+        working-directory: example
+        run: flutter build web --wasm
+
       - name: Validate package
         run: flutter pub publish --dry-run
 
+  selection-integration:
+    name: Selection platform matrix
+    uses: ./.github/workflows/selection-integration.yml
+
   release:
     name: Create GitHub release
-    needs: test
+    needs:
+      - compatibility
+      - test
+      - selection-integration
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -53,7 +112,10 @@ jobs:
 
   publish:
     name: Publish to pub.dev
-    needs: test
+    needs:
+      - compatibility
+      - test
+      - selection-integration
     permissions:
       contents: read
       id-token: write

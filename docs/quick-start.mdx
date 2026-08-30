@@ -75,15 +75,32 @@ await warmUpStreamingMarkdownParser(includeWorker: true);
 Set `asSliver` when the renderer is placed inside a `CustomScrollView`:
 
 ```dart
-CustomScrollView(
-  slivers: [
-    AnimatedStreamingMarkdown(
-      blocks: result.blocks,
-      asSliver: true,
-    ),
-  ],
+final selectionController = AnimatedMarkdownSelectionController();
+
+AnimatedStreamingMarkdownSelectionArea(
+  controller: selectionController,
+  child: CustomScrollView(
+    slivers: [
+      AnimatedStreamingMarkdown(
+        blocks: result.blocks,
+        asSliver: true,
+        enableSelection: true,
+        selectionController: selectionController,
+      ),
+    ],
+  ),
 );
 ```
+
+The wrapper is required only when sliver selection is enabled. It preserves
+lazy rendering and manages exactly one Markdown renderer. Dispose an app-owned
+controller with the surrounding `State`.
+
+Selection is source-backed and directional. Dragging or moving a handle near
+an edge advances scrolling frame by frame like a `TextField`; releasing or
+cancelling stops it immediately and does not add fling momentum. Images,
+LaTeX, tables, code, lists, and HTML blocks participate in the same selection
+range, and the highlight is a single flat layer per visual line.
 
 ## Custom Token Animation
 
@@ -109,4 +126,8 @@ AnimatedStreamingMarkdown(
 When `enableSelection` is active, selection is stored as stable Markdown source
 offsets. Dragging near a vertical viewport edge auto-scrolls the surrounding
 scrollable; dragging inside an overflowed table near its left or right edge
-auto-scrolls that table so the range can keep growing.
+auto-scrolls that table so the range can keep growing. Releasing the pointer or
+handle stops scrolling without momentum. Keyboard and controller changes reveal
+the changed endpoint with 20 logical pixels of padding by default. Keep the
+parser and renderer state alive across streamed appends; use stable keys when
+renderers are children of a virtualized message list.

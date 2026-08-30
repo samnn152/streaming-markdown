@@ -67,11 +67,15 @@ class _InlineLinkMatch {
     required this.label,
     required this.url,
     required this.end,
+    this.isCompleted = true,
+    required this.sourceMarkdown,
   });
 
   final String label;
   final String url;
   final int end;
+  final bool isCompleted;
+  final String sourceMarkdown;
 }
 
 class _FootnoteReferenceMatch {

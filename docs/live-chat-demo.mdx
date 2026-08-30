@@ -8,10 +8,18 @@ description: Try the static Flutter web chatbot demo embedded in the docs.
 The embedded demo is the same Flutter example app from `example/lib/main.dart`,
 built as a static web app and served from the documentation site.
 
-This page is refreshed for the `0.3.6` release so the docs demo matches the
-current shipped example, including the default Fade reveal, render-backed
-selection, cross-table dragging, scroll-edge selection, LaTeX rendering, and
-web parser support.
+This page is refreshed for the `0.3.7` release so the docs demo matches the
+current shipped example. The high-resolution recording uses only deterministic
+offline fixtures: it demonstrates flat source-backed selection through
+formatted text and inline code, the semantic transition from an unfinished
+inline link to a completed link, and character-level selection inside a custom
+widget while its switch remains interactive.
+
+The embedded app also includes the default Fade reveal, cross-table dragging,
+TextField-like scroll-edge selection, LaTeX rendering, and web parser support.
+Completed assistant renderers retain their streaming state when new messages
+are added. Use the link and pointer icons in the app bar to open the two offline
+labs without configuring a chat provider.
 
 It can connect to:
 

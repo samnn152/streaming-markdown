@@ -5,6 +5,7 @@ class _HtmlBlockRenderer {
     required this.context,
     required this.onLinkTap,
     required this.paragraphTextStyle,
+    required this.selectionColor,
   });
 
   static const Color _borderColor = Color(0xFF30363D);
@@ -46,6 +47,30 @@ class _HtmlBlockRenderer {
   final BuildContext context;
   final ValueChanged<String> onLinkTap;
   final TextStyle? paragraphTextStyle;
+  final Color selectionColor;
+  int _selectionPlainCursor = 0;
+
+  int _reserveSelectionPlainText(String plainText) {
+    if (plainText.isEmpty) {
+      return _selectionPlainCursor;
+    }
+    if (_selectionPlainCursor > 0) {
+      _selectionPlainCursor += 1;
+    }
+    final int start = _selectionPlainCursor;
+    _selectionPlainCursor += plainText.length;
+    return start;
+  }
+
+  (int, int) _selectionStartsFor(String plainText) {
+    final int localStart = _reserveSelectionPlainText(plainText);
+    final _MarkdownSelectionBlockRange? blockRange =
+        _MarkdownSelectionBlockVisualScope.maybeOf(context)?.blockRange;
+    return (
+      (blockRange?.plainRange.start ?? 0) + localStart,
+      (blockRange?.compactRange.start ?? 0) + localStart,
+    );
+  }
 
   TextStyle get _paragraphStyle =>
       paragraphTextStyle ??

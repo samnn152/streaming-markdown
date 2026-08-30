@@ -103,14 +103,16 @@ Important renderer options include:
 - `showCodeBlockCopyButton`
 - `enableSelection`
 - `selectionStrategy`
+- `selectionController`
+- `selectionScrollPadding`
 - `theme`
 - `blockBuilder`
 - `imageBuilder`
 - `latexBuilder`
 
 Inline `$...$` / `\(...\)` and display `$$...$$` / `\[...\]` LaTeX expressions
-render with the bundled KaTeX-compatible `flutter_math_fork` integration. Use
-`latexBuilder` when you need to wrap or replace the default math widget.
+render with the bundled KaTeX-compatible view renderer. Use `latexBuilder`
+when you need to wrap or replace the default math widget.
 
 ## Theming
 
@@ -144,6 +146,50 @@ AnimatedStreamingMarkdown(
 
 Return `null` to use the default widget.
 
+Custom image and LaTeX builders remain inside the renderer's atomic selection
+proxy automatically. If a block builder replaces the complete default widget
+with a custom object, wrap it with `AnimatedMarkdownSelectable` and provide its
+plain-text projection:
+
+```dart
+return AnimatedMarkdownSelectable(
+  plainText: block.block.content,
+  child: MyCustomObject(block.block),
+);
+```
+
+This supplies geometry to the selection engine while raw and rich copy remain
+backed by the original Markdown source.
+
+The default wrapper is atomic. Use `AnimatedMarkdownSelectable.text` when the
+custom child is `Text`, `RichText`, or Flutter's `SelectableText`; selection is
+then mapped character by character to Markdown source offsets. Composite custom
+objects can use `AnimatedMarkdownSelectable.fragments` with
+`AnimatedMarkdownSelectionFragment` around each text region. Interactive
+non-text siblings remain enabled.
+
+## Incomplete Streaming Links
+
+`MarkdownBlock.inlineLinks` exposes `MarkdownInlineLink` values with `label`,
+the destination received so far, `isCompleted`, lossless source, and offsets.
+The default renderer hides `[Hel`, shows the destination for
+`[Hello](https://hello` as a tappable link, then shows the linked label after
+`)` arrives.
+
+This semantic scan covers direct inline links, including one unfinished link at
+the active source tail. Code spans, autolinks, images, and escaped opening
+brackets remain intentionally visible syntax and are not reclassified.
+
+Use `incompleteLinkTextBuilder` to choose another temporary projection without
+inspecting or rewriting the raw Markdown:
+
+```dart
+AnimatedStreamingMarkdown(
+  blocks: result.blocks,
+  incompleteLinkTextBuilder: (link) => link.label, // or return ''
+);
+```
+
 ## Selection And Token Compaction
 
 With `enableSelection: true`, the renderer maps pointer gestures to absolute
@@ -153,9 +199,40 @@ the chosen endpoints. Users can select partial text within table cells, drag
 through a table into later blocks, and continue a drag at vertical or
 horizontal scroll edges.
 
+Selection is painted as a flat layer per visual line rather than as separate
+token backgrounds. Images and inline/display LaTeX are represented by their
+laid-out non-text bounds, so mouse selection, touch long-press, handles, and
+keyboard extension can cross formatted and non-text content consistently.
+
+`AnimatedMarkdownSelectionController.value` exposes the current source
+snapshot and directional `TextSelection`. Use `selection`, `clear()`, and
+`selectAll()` for programmatic changes. `selectedMarkdown` returns the exact
+source slice rather than reconstructing it from visible text.
+
+Box mode creates a selection area internally. For `asSliver: true`, wrap the
+`CustomScrollView` in `AnimatedStreamingMarkdownSelectionArea` and give the
+wrapper and its single Markdown renderer the same controller. This allows
+offscreen sliver children to unmount and rehydrate their local geometry when
+they return.
+
 `tokenCompaction` defaults to `AnimatedMarkdownTokenCompaction.automatic`.
 After animated word tokens settle, it merges their animation hosts into lighter
 static spans while retaining the same geometry for layout and selection.
+
+## Streaming State And Copy
+
+`append(chunk)` updates the existing document incrementally. Existing settled
+tokens and the source selection remain anchored while new blocks arrive; a
+complete replacement should use `replace(markdown)`. Applications that put
+multiple renderers in a virtualized list should preserve each message's widget
+identity and keep its parser/controller in state.
+
+`selectionStrategy.plain` copies rendered plain text, `raw` copies the selected
+Markdown source, and `rich` writes HTML together with the same plain-text
+fallback. The rich writer is implemented for Web, Android, iOS, macOS,
+Windows, and Linux. Native and programmatic writer failures retry with plain
+text instead of surfacing `UnsupportedError` to the UI. Browser copy events
+provide both HTML and plain text when writable clipboard data is available.
 
 ## API Reference
 

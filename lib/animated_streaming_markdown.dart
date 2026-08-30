@@ -34,6 +34,9 @@ export 'src/model/syntax_tree.dart';
 /// Render node model used by streaming render pipeline.
 export 'src/model/render_node.dart';
 
+/// Semantic inline-link state, including incomplete streaming links.
+export 'src/model/inline_link.dart';
+
 /// Native incremental markdown parser session API.
 export 'src/native/incremental_parser_stub.dart'
     if (dart.library.ffi) 'src/native/incremental_parser.dart';

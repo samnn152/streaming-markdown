@@ -24,42 +24,7 @@ extension _StreamingMarkdownContentParsing on StreamingMarkdownRenderView {
 
   String _htmlBlockSelectionText(String raw) {
     final html_dom.DocumentFragment fragment = html_parser.parseFragment(raw);
-    return _firstHtmlSelectionText(fragment.nodes).trim();
-  }
-
-  String _firstHtmlSelectionText(List<html_dom.Node> nodes) {
-    for (final html_dom.Node node in nodes) {
-      final String text = _htmlSelectionTextForNode(node);
-      if (text.trim().isNotEmpty) {
-        return text;
-      }
-    }
-    return '';
-  }
-
-  String _htmlSelectionTextForNode(html_dom.Node node) {
-    if (node is html_dom.Text) {
-      return node.text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    }
-    if (node is! html_dom.Element) {
-      return '';
-    }
-
-    final String tag = (node.localName ?? '').toLowerCase();
-    if (tag == 'img') {
-      return (node.attributes['alt'] ?? node.attributes['src'] ?? '')
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .trim();
-    }
-    if (tag == 'br') {
-      return '\n';
-    }
-
-    final String text = _firstHtmlSelectionText(node.nodes);
-    if (text.trim().isNotEmpty) {
-      return text;
-    }
-    return node.text.replaceAll(RegExp(r'\s+'), ' ').trim();
+    return _htmlSelectionUnitsForNodes(fragment.nodes).join('\n');
   }
 
   String _headingText(MarkdownRenderNode node) {
@@ -117,4 +82,141 @@ extension _StreamingMarkdownContentParsing on StreamingMarkdownRenderView {
   bool _isSetextDelimiterLine(String line) {
     return RegExp(r'^\s{0,3}(=+|-+)\s*$').hasMatch(line);
   }
+}
+
+List<String> _htmlSelectionUnitsForNodes(List<html_dom.Node> nodes) {
+  final List<String> units = <String>[];
+  void append(String text) {
+    if (text.trim().isNotEmpty) {
+      units.add(text);
+    }
+  }
+
+  for (final html_dom.Node node in nodes) {
+    if (node is html_dom.Text) {
+      append(_normalizeHtmlInlineText(node.text).trim());
+      continue;
+    }
+    if (node is! html_dom.Element) {
+      continue;
+    }
+    final String tag = (node.localName ?? '').toLowerCase();
+    switch (tag) {
+      case 'h1':
+      case 'h2':
+      case 'h3':
+      case 'h4':
+      case 'h5':
+      case 'h6':
+      case 'p':
+        append(_htmlInlineSelectionText(node.nodes));
+        break;
+      case 'pre':
+        append(node.text.trimRight());
+        break;
+      case 'blockquote':
+        units.addAll(_htmlSelectionUnitsForNodes(node.nodes));
+        break;
+      case 'ul':
+      case 'ol':
+        for (final html_dom.Element item in node.children.where(
+          (html_dom.Element child) => child.localName == 'li',
+        )) {
+          units.addAll(_htmlSelectionUnitsForNodes(item.nodes));
+        }
+        break;
+      case 'table':
+        for (final html_dom.Element row in node.querySelectorAll('tr')) {
+          for (final html_dom.Element cell in row.children.where(
+            (html_dom.Element child) =>
+                child.localName == 'th' || child.localName == 'td',
+          )) {
+            append(_htmlInlineSelectionText(cell.nodes));
+          }
+        }
+        break;
+      case 'img':
+        append(_htmlImageSelectionText(node));
+        break;
+      case 'a':
+        append(_htmlStandaloneAnchorSelectionText(node));
+        break;
+      case 'hr':
+      case 'br':
+        break;
+      default:
+        final bool hasBlockChildren =
+            node.nodes.whereType<html_dom.Element>().any(
+                  (html_dom.Element child) => _HtmlBlockRenderer._blockTags
+                      .contains((child.localName ?? '').toLowerCase()),
+                );
+        if (hasBlockChildren) {
+          units.addAll(_htmlSelectionUnitsForNodes(node.nodes));
+        } else {
+          append(_htmlInlineSelectionText(node.nodes));
+        }
+        break;
+    }
+  }
+  return units;
+}
+
+String _htmlInlineSelectionText(List<html_dom.Node> nodes) {
+  final StringBuffer out = StringBuffer();
+  for (final html_dom.Node node in nodes) {
+    if (node is html_dom.Text) {
+      out.write(_normalizeHtmlInlineText(node.text));
+      continue;
+    }
+    if (node is! html_dom.Element) {
+      continue;
+    }
+    final String tag = (node.localName ?? '').toLowerCase();
+    switch (tag) {
+      case 'br':
+        out.write('\n');
+        break;
+      case 'code':
+        out.write(node.text);
+        break;
+      case 'a':
+        final String href = (node.attributes['href'] ?? '').trim();
+        final String label = _normalizeHtmlInlineText(node.text).trim();
+        out.write(label.isEmpty ? href : label);
+        break;
+      case 'img':
+        out.write(_htmlImageSelectionText(node));
+        break;
+      default:
+        out.write(_htmlInlineSelectionText(node.nodes));
+        break;
+    }
+  }
+  return out.toString();
+}
+
+String _htmlImageSelectionText(html_dom.Element element) {
+  final String alt = _normalizeHtmlInlineText(
+    element.attributes['alt'] ?? '',
+  ).trim();
+  if (alt.isNotEmpty) {
+    return '[image: $alt]';
+  }
+  final String src = _normalizeHtmlInlineText(
+    element.attributes['src'] ?? '',
+  ).trim();
+  return src.isEmpty ? '[image]' : '[image: $src]';
+}
+
+String _htmlStandaloneAnchorSelectionText(html_dom.Element element) {
+  final String href = (element.attributes['href'] ?? '').trim();
+  final String label = _normalizeHtmlInlineText(element.text).trim();
+  if (href.isEmpty) {
+    return label;
+  }
+  return label.isEmpty ? href : '$label ($href)';
+}
+
+String _normalizeHtmlInlineText(String raw) {
+  return raw.replaceAll(RegExp(r'\s+'), ' ');
 }

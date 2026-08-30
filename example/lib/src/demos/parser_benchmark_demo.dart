@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
 import 'package:flutter/material.dart';
 
+import '../flutter_sdk_compat.dart';
+
 void main() {
   runApp(const ParserBenchmarkDemoApp());
 }
@@ -264,7 +266,7 @@ class _ParserBenchmarkDemoPageState extends State<ParserBenchmarkDemoPage> {
         child: Column(
           children: [
             Material(
-              color: colors.surfaceContainerHighest,
+              color: flutterSurfaceContainerHighest(colors),
               child: Padding(
                 padding: const EdgeInsets.all(12),
                 child: Wrap(
@@ -375,7 +377,10 @@ class _Dropdown<T> extends StatelessWidget {
     return SizedBox(
       width: 180,
       child: DropdownButtonFormField<T>(
-        initialValue: value,
+        // `value` is the Flutter 3.10 spelling; `initialValue` replaced it in
+        // newer SDKs without changing the behavior needed by this demo.
+        // ignore: deprecated_member_use
+        value: value,
         decoration: InputDecoration(
           labelText: label,
           border: const OutlineInputBorder(),
@@ -431,7 +436,7 @@ class _StatusLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Theme.of(context).colorScheme.surfaceContainerLow,
+      color: flutterSurfaceContainerLow(Theme.of(context).colorScheme),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         child: Row(
@@ -479,7 +484,8 @@ class _ResultsPane extends StatelessWidget {
         return ListView.separated(
           padding: const EdgeInsets.all(12),
           itemCount: results.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 12),
+          separatorBuilder: (BuildContext context, int index) =>
+              const SizedBox(height: 12),
           itemBuilder: (BuildContext context, int index) {
             return _ResultTile(result: results[index]);
           },
@@ -602,7 +608,8 @@ class _BlockContentList extends StatelessWidget {
             child: ListView.separated(
               padding: const EdgeInsets.all(8),
               itemCount: blocks.length,
-              separatorBuilder: (_, _) => const Divider(height: 14),
+              separatorBuilder: (BuildContext context, int index) =>
+                  const Divider(height: 14),
               itemBuilder: (BuildContext context, int index) {
                 final MarkdownBlock block = blocks[index];
                 return Column(
@@ -685,9 +692,9 @@ class _SourcePane extends StatelessWidget {
         child: SelectableText(
           markdown,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-            fontFamily: 'monospace',
-            height: 1.45,
-          ),
+                fontFamily: 'monospace',
+                height: 1.45,
+              ),
         ),
       ),
     );

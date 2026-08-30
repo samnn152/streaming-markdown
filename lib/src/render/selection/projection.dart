@@ -14,22 +14,52 @@ extension _StreamingMarkdownSelectionProjectionBuilder
       switch (block.type) {
         case 'atx_heading':
         case 'setext_heading':
+          final String headingMarkdown = _headingText(block);
           segments.add(
-            _MarkdownSelectionSegment.plain(
-              plainText: _headingText(block),
-              markdownText: raw,
+            _embeddedInlineSelectionSegment(
+              headingMarkdown,
+              sourceMarkdown: raw,
+              linkReferences: linkReferences,
+              footnoteNumbers: footnoteNumbers,
               preserveBlockMarkdownOnPartial: true,
             ),
           );
           break;
         case 'paragraph':
+          final List<_FootnoteDefinition> paragraphDefinitions =
+              _parseFootnoteDefinitions(raw);
+          if (paragraphDefinitions.isNotEmpty) {
+            segments.add(
+              _footnoteSelectionSegment(
+                raw,
+                paragraphDefinitions,
+                linkReferences: linkReferences,
+                footnoteNumbers: footnoteNumbers,
+              ),
+            );
+            break;
+          }
+          _ParsedTable? paragraphTable = _parseMarkdownTable(raw);
+          if (paragraphTable == null && raw.contains('\n')) {
+            paragraphTable = _parseMarkdownTable(
+              raw,
+              allowLooseWithoutDelimiter: true,
+              minLooseRowsWithoutDelimiter: 2,
+            );
+          }
           segments.add(
-            _inlineSelectionSegment(
-              _selectionParagraphText(block),
-              markdownText: raw,
-              linkReferences: linkReferences,
-              footnoteNumbers: footnoteNumbers,
-            ),
+            paragraphTable == null
+                ? _inlineSelectionSegment(
+                    _selectionParagraphText(block),
+                    markdownText: raw,
+                    linkReferences: linkReferences,
+                    footnoteNumbers: footnoteNumbers,
+                  )
+                : _tableSelectionSegment(
+                    raw,
+                    linkReferences: linkReferences,
+                    footnoteNumbers: footnoteNumbers,
+                  ),
           );
           break;
         case 'list':
@@ -42,7 +72,13 @@ extension _StreamingMarkdownSelectionProjectionBuilder
           );
           break;
         case 'block_quote':
-          segments.add(_quoteSelectionSegment(block));
+          segments.add(
+            _quoteSelectionSegment(
+              block,
+              linkReferences: linkReferences,
+              footnoteNumbers: footnoteNumbers,
+            ),
+          );
           break;
         case 'fenced_code_block':
         case 'indented_code_block':
@@ -53,18 +89,19 @@ extension _StreamingMarkdownSelectionProjectionBuilder
           final List<_FootnoteDefinition> definitions =
               _parseFootnoteDefinitions(raw);
           segments.add(
-            _MarkdownSelectionSegment.plain(
-              plainText: definitions.isEmpty
-                  ? raw
-                  : definitions
-                      .map(
-                        (_FootnoteDefinition definition) =>
-                            '${definition.id}: ${definition.body}',
-                      )
-                      .join('\n'),
-              markdownText: raw,
-              preserveBlockMarkdownOnPartial: true,
-            ),
+            definitions.isEmpty
+                ? _inlineSelectionSegment(
+                    raw,
+                    markdownText: raw,
+                    linkReferences: linkReferences,
+                    footnoteNumbers: footnoteNumbers,
+                  )
+                : _footnoteSelectionSegment(
+                    raw,
+                    definitions,
+                    linkReferences: linkReferences,
+                    footnoteNumbers: footnoteNumbers,
+                  ),
           );
           break;
         case 'html_block':
@@ -94,17 +131,50 @@ extension _StreamingMarkdownSelectionProjectionBuilder
             footnoteNumbers: footnoteNumbers,
           ));
           break;
+        case 'front_matter':
+          segments.add(
+            _inlineSelectionSegment(
+              raw,
+              markdownText: raw,
+              linkReferences: linkReferences,
+              footnoteNumbers: footnoteNumbers,
+            ),
+          );
+          break;
         default:
           segments.add(
-            _MarkdownSelectionSegment.plain(
-              plainText: _contentOrRaw(block),
+            _inlineSelectionSegment(
+              _paragraphText(block),
               markdownText: raw,
+              linkReferences: linkReferences,
+              footnoteNumbers: footnoteNumbers,
             ),
           );
           break;
       }
     }
     return _MarkdownSelectionProjection(segments);
+  }
+
+  _MarkdownSelectionSegment _footnoteSelectionSegment(
+    String raw,
+    List<_FootnoteDefinition> definitions, {
+    required Map<String, String> linkReferences,
+    required Map<String, int> footnoteNumbers,
+  }) {
+    final String plainText = definitions.map((_FootnoteDefinition definition) {
+      final String body = _inlineSelectionPlainText(
+        definition.body,
+        linkReferences: linkReferences,
+        footnoteNumbers: footnoteNumbers,
+      );
+      return '${definition.id}: $body';
+    }).join('\n');
+    return _MarkdownSelectionSegment.plain(
+      plainText: plainText,
+      markdownText: raw,
+      preserveBlockMarkdownOnPartial: true,
+    );
   }
 
   String _selectionParagraphText(MarkdownRenderNode node) {

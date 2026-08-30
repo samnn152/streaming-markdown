@@ -30,11 +30,11 @@ final class ChatState {
   });
 
   const ChatState.initial()
-    : this(
-        isSubmitting: false,
-        status: 'Choose a provider and send a message.',
-        messages: const <ChatMessage>[],
-      );
+      : this(
+          isSubmitting: false,
+          status: 'Choose a provider and send a message.',
+          messages: const <ChatMessage>[],
+        );
 
   final bool isSubmitting;
   final String status;
@@ -55,14 +55,15 @@ final class ChatState {
 
 final class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ChatBloc({required StreamChatAnswerUseCase streamAnswerUseCase})
-    : _streamAnswerUseCase = streamAnswerUseCase,
-      super(const ChatState.initial()) {
+      : _streamAnswerUseCase = streamAnswerUseCase,
+        super(const ChatState.initial()) {
     on<ChatStarted>(_onStarted);
     on<ChatSubmitted>(_onSubmitted);
     on<ChatCleared>(_onCleared);
   }
 
   final StreamChatAnswerUseCase _streamAnswerUseCase;
+  int _nextTurnSequence = 0;
 
   void _onStarted(ChatStarted event, Emitter<ChatState> emit) {
     emit(state.copyWith(status: 'Choose a provider and send a message.'));
@@ -88,7 +89,8 @@ final class ChatBloc extends Bloc<ChatEvent, ChatState> {
       return;
     }
 
-    final String turnId = DateTime.now().microsecondsSinceEpoch.toString();
+    final String turnId =
+        '${DateTime.now().microsecondsSinceEpoch}_${_nextTurnSequence++}';
     final List<ChatMessage> nextMessages = <ChatMessage>[
       ...state.messages,
       ChatMessage(
@@ -145,11 +147,11 @@ final class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final List<ChatMessage> updatedMessages = List<ChatMessage>.from(
         state.messages,
       );
-      updatedMessages[assistantIndex] = updatedMessages[assistantIndex]
-          .copyWith(
-            content: 'Request failed:\n\n```text\n$error\n```',
-            complete: true,
-          );
+      updatedMessages[assistantIndex] =
+          updatedMessages[assistantIndex].copyWith(
+        content: 'Request failed:\n\n```text\n$error\n```',
+        complete: true,
+      );
       emit(
         state.copyWith(
           isSubmitting: false,

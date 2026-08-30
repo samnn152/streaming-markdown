@@ -9,6 +9,45 @@ on:
       - main
 
 jobs:
+  compatibility:
+    name: Flutter 3.10.7 compatibility
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Flutter 3.10.7
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.10.7'
+          cache: true
+
+      - name: Install package dependencies
+        run: flutter pub get
+
+      - name: Verify committed WASM parser assets
+        run: bash tool/verify_wasm_assets.sh
+
+      - name: Analyze package
+        run: dart analyze
+
+      - name: Run package tests
+        env:
+          SKIP_GOLDENS: 'true'
+        run: flutter test
+
+      - name: Run selection tests in Chrome
+        run: >-
+          flutter test --platform chrome
+          test/render/selection_components_test.dart
+          test/render/selection_controller_test.dart
+          test/render/selection_scroll_visual_test.dart
+          test/render/selection_textfield_reference_test.dart
+
+      - name: Build Flutter web example
+        working-directory: example
+        run: flutter build web
+
   test:
     name: Analyze and test package
     runs-on: ubuntu-latest
@@ -33,6 +72,14 @@ jobs:
 
       - name: Run render tests
         run: flutter test
+
+      - name: Run selection tests in Chrome
+        run: >-
+          flutter test --platform chrome
+          test/render/selection_components_test.dart
+          test/render/selection_controller_test.dart
+          test/render/selection_scroll_visual_test.dart
+          test/render/selection_textfield_reference_test.dart
 
   docs:
     name: Build docs

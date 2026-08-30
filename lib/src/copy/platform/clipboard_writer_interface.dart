@@ -1,5 +1,9 @@
 import 'package:flutter/services.dart';
 
+const MethodChannel markdownClipboardChannel = MethodChannel(
+  'animated_streaming_markdown/clipboard',
+);
+
 abstract class MarkdownClipboardWriter {
   const MarkdownClipboardWriter();
 

@@ -74,6 +74,28 @@ Complete:
 - Token compaction after animation settlement without layout jolts.
 - `Gravity` animation example with `Fade` restored as the default demo effect.
 
+## 0.3.7
+
+Complete:
+
+- Public directional source-selection controller and immutable value snapshot.
+- Shared box/sliver selection coordinator with lazy sliver rehydration.
+- TextField-reference edge scrolling, endpoint reveal, and immediate stop on
+  pointer-up or cancel.
+- Geometry leases and semantic endpoint remapping during streamed replacement.
+- Unified source-backed copy payloads for native and web entry points, with rich
+  clipboard writers on Web, Android, iOS, macOS, Windows, and Linux plus plain
+  fallback.
+- Stable example chat renderers that retain parser, settled animation, and
+  selection state when new messages recycle the list.
+- Semantic incomplete-link snapshots with customizable temporary projection;
+  the default hides label-only tails, exposes an arriving destination as a
+  tappable link, and switches to the label on completion.
+- Atomic, character-level, and fragment-level selection adapters for custom
+  Markdown widgets while interactive siblings remain usable.
+- Browser focus lifecycle handling that dismisses on an in-app click but keeps
+  finalized selection across scrolling, tab changes, and window changes.
+
 ## Next Priorities
 
 - Optimize parser and renderer performance, especially stable-content render

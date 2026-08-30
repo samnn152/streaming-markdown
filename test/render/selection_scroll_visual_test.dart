@@ -1,5 +1,7 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:animated_streaming_markdown/animated_streaming_markdown.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
@@ -7,7 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 const Color _selectionColor = Color(0x4DFF00FF);
-const String _testFontFamily = 'Roboto';
+const String _testFontFamily = 'MarkdownSelectionTest';
 const Size _surfaceSize = Size(420, 100);
 const int _fps = 60;
 const int _assertFrameCount = 24;
@@ -25,7 +27,7 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       final bool recordVideo =
-          Platform.environment['RECORD_SELECTION_SCROLL_VIDEO'] == '1';
+          _environmentFlag('RECORD_SELECTION_SCROLL_VIDEO');
       final int frameCount =
           recordVideo ? _recordFrameCount : _assertFrameCount;
 
@@ -93,7 +95,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pumpAndSettle();
 
       final RenderParagraph paragraph =
           _renderParagraphContaining(tester, selectedLine);
@@ -103,7 +105,8 @@ void main() {
       );
       await tester.pump();
       await gesture.moveTo(
-        paragraph.localToGlobal(const Offset(390, 10)),
+        _textOffsetToPosition(paragraph, selectedLine.length) +
+            const Offset(0, 8),
       );
       await tester.pump(const Duration(milliseconds: 80));
       await gesture.up();
@@ -160,10 +163,13 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       final bool recordVideo =
-          Platform.environment['RECORD_SELECTION_REPLACE_VIDEO'] == '1';
+          _environmentFlag('RECORD_SELECTION_REPLACE_VIDEO');
 
       final ScrollController scrollController = ScrollController();
       addTearDown(scrollController.dispose);
+      final AnimatedMarkdownSelectionController selectionController =
+          AnimatedMarkdownSelectionController();
+      addTearDown(selectionController.dispose);
 
       const String firstLine = 'FirstLockedLineStaysPut';
       const String firstBlock =
@@ -203,6 +209,7 @@ void main() {
                             padding: const EdgeInsets.all(8),
                             enableTextSelection: true,
                             selectionStrategy: SelectionStrategy.raw,
+                            selectionController: selectionController,
                             tokenArrivalDelay: Duration.zero,
                             tokenFadeInDuration: Duration.zero,
                             markdownTheme: const StreamingMarkdownThemeData(
@@ -226,7 +233,7 @@ void main() {
           ),
         ),
       );
-      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pumpAndSettle();
 
       RenderParagraph paragraph = _renderParagraphContaining(tester, firstLine);
       TestGesture gesture = await tester.startGesture(
@@ -271,6 +278,18 @@ void main() {
       }
 
       paragraph = _renderParagraphContaining(tester, secondLine);
+      final double endGlobalY =
+          _textOffsetToPosition(paragraph, secondLine.length).dy;
+      if (scrollController.hasClients) {
+        final double centeredOffset =
+            (scrollController.offset + endGlobalY - 55).clamp(
+          scrollController.position.minScrollExtent,
+          scrollController.position.maxScrollExtent,
+        );
+        scrollController.jumpTo(centeredOffset);
+        await tester.pump();
+        paragraph = _renderParagraphContaining(tester, secondLine);
+      }
       final Offset start =
           _textOffsetToPosition(paragraph, 0) + const Offset(2, 8);
       final Offset end = _textOffsetToPosition(paragraph, secondLine.length) +
@@ -293,7 +312,7 @@ void main() {
 
       await gesture.up();
       await tester.pump();
-      _expectLineHasNativeSelection(tester, secondLine);
+      expect(selectionController.value.selectedMarkdown, secondLine);
       _expectSourceVisualDoesNotHighlight(tester, firstLine);
     },
   );
@@ -386,17 +405,18 @@ void main() {
           ),
         ),
       );
-      await tester.pump(const Duration(milliseconds: 120));
+      await tester.pumpAndSettle();
 
       final RenderParagraph quietParagraph =
           _renderParagraphContaining(tester, 'Quiet');
       final TestGesture gesture = await tester.startGesture(
-        _textOffsetToPosition(quietParagraph, 1) + const Offset(2, 8),
+        _textOffsetToPosition(quietParagraph, 1) + const Offset(0, 8),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pump();
       await gesture.moveTo(
-        _textOffsetToPosition(quietParagraph, 4) + const Offset(4, 8),
+        _textOffsetToPosition(quietParagraph, 'Quiet'.length) +
+            const Offset(0, 8),
       );
       await tester.pump(const Duration(milliseconds: 80));
       await gesture.up();
@@ -419,6 +439,370 @@ void main() {
       );
     },
   );
+
+  testWidgets(
+    'streaming long text response preserves selection without drift during repeated scroll up and down',
+    (WidgetTester tester) async {
+      final ScrollController scrollController = ScrollController();
+      addTearDown(scrollController.dispose);
+
+      String? clipboardText;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (MethodCall methodCall) async {
+          switch (methodCall.method) {
+            case 'Clipboard.setData':
+              final Map<dynamic, dynamic> data =
+                  methodCall.arguments! as Map<dynamic, dynamic>;
+              clipboardText = data['text'] as String?;
+              return null;
+            case 'Clipboard.getData':
+              return <String, dynamic>{'text': clipboardText};
+          }
+          return null;
+        },
+      );
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        );
+      });
+
+      const String selectedAnchor =
+          'Anchor line selected while generating long text.';
+      final List<String> paragraphs = <String>[
+        selectedAnchor,
+        'Second paragraph explaining details in depth.',
+      ];
+
+      late StateSetter updateStream;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: Colors.white,
+            body: ColoredBox(
+              color: Colors.white,
+              child: SizedBox(
+                width: 480,
+                height: 180,
+                child: StatefulBuilder(
+                  builder: (BuildContext context, StateSetter setState) {
+                    updateStream = setState;
+                    return ListView(
+                      controller: scrollController,
+                      children: <Widget>[
+                        AnimatedStreamingMarkdown.fromMarkdown(
+                          markdown: paragraphs.join('\n\n'),
+                          padding: const EdgeInsets.all(8),
+                          tokenStaggerDelay: Duration.zero,
+                          tokenAnimationDuration: Duration.zero,
+                          enableSelection: true,
+                          selectionStrategy: SelectionStrategy.raw,
+                        ),
+                        const SizedBox(height: 300),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // 1. Select the anchor line in paragraph 1
+      final RenderParagraph anchorParagraph =
+          _renderParagraphContaining(tester, selectedAnchor);
+      final TestGesture gesture = await tester.startGesture(
+        _textOffsetToPosition(anchorParagraph, 0) + const Offset(4, 8),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveTo(
+        _textOffsetToPosition(anchorParagraph, selectedAnchor.length) +
+            const Offset(4, 8),
+      );
+      await tester.pump(const Duration(milliseconds: 60));
+      await gesture.up();
+      await tester.pump(const Duration(milliseconds: 60));
+
+      // 2. Simulate streaming long new tokens while scrolling up and down repeatedly
+      for (int i = 0; i < 8; i += 1) {
+        updateStream(() {
+          paragraphs.add(
+            'Streamed paragraph $i providing comprehensive detailed markdown analysis '
+            'with **bold** emphasis, `code snippets`, and list items:\n'
+            '- Feature $i.1: High performance streaming parser\n'
+            '- Feature $i.2: Zero-drift selection highlight\n'
+            '- Feature $i.3: Dynamic viewport auto-scroll',
+          );
+        });
+        await tester.pump(const Duration(milliseconds: 60));
+
+        // Scroll down
+        scrollController.jumpTo((i + 1) * 35.0);
+        await tester.pump(const Duration(milliseconds: 40));
+
+        // Scroll up
+        scrollController.jumpTo(((i + 1) * 35.0) - 15.0);
+        await tester.pump(const Duration(milliseconds: 40));
+
+        // Verify clipboard text remains rock-solid on the selected anchor
+        final BuildContext copyContext =
+            tester.binding.focusManager.primaryFocus!.context!;
+        Actions.invoke(copyContext, CopySelectionTextIntent.copy);
+        await tester.pump();
+        expect(
+          clipboardText,
+          selectedAnchor,
+          reason:
+              'Step $i: Selection must not drift when scrolling up/down during active streaming.',
+        );
+      }
+    },
+  );
+
+  testWidgets(
+    'drag selection upward towards top edge smoothly auto-scrolls hidden ancestor content and extends selection',
+    (WidgetTester tester) async {
+      final ScrollController scrollController = ScrollController();
+      addTearDown(scrollController.dispose);
+
+      String? clipboardText;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (MethodCall methodCall) async {
+          switch (methodCall.method) {
+            case 'Clipboard.setData':
+              final Map<dynamic, dynamic> data =
+                  methodCall.arguments! as Map<dynamic, dynamic>;
+              clipboardText = data['text'] as String?;
+              return null;
+            case 'Clipboard.getData':
+              return <String, dynamic>{'text': clipboardText};
+          }
+          return null;
+        },
+      );
+      addTearDown(() {
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        );
+      });
+
+      final List<String> blocks = <String>[
+        '# Top Hidden Section Heading',
+        for (int i = 1; i <= 8; i += 1)
+          'Hidden section block $i with detailed context ensuring height.',
+        'Target bottom paragraph where user starts dragging upward.',
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: Colors.white,
+            body: ColoredBox(
+              color: Colors.white,
+              child: SizedBox(
+                width: 500,
+                height: 140,
+                child: ListView(
+                  controller: scrollController,
+                  children: <Widget>[
+                    AnimatedStreamingMarkdown.fromMarkdown(
+                      markdown: blocks.join('\n\n'),
+                      padding: const EdgeInsets.all(8),
+                      tokenStaggerDelay: Duration.zero,
+                      tokenAnimationDuration: Duration.zero,
+                      enableSelection: true,
+                      selectionStrategy: SelectionStrategy.raw,
+                    ),
+                    const SizedBox(height: 300),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Position the target paragraph inside the viewport using its measured
+      // geometry. Fixed scroll offsets make this fixture font/backend
+      // dependent and can leave the drag origin off-screen on Chrome.
+      RenderParagraph bottomParagraph =
+          _renderParagraphContaining(tester, 'Target bottom paragraph');
+      final double targetGlobalTop =
+          bottomParagraph.localToGlobal(Offset.zero).dy;
+      final double targetScrollOffset =
+          (scrollController.offset + targetGlobalTop - 70).clamp(
+        scrollController.position.minScrollExtent,
+        scrollController.position.maxScrollExtent,
+      );
+      scrollController.jumpTo(targetScrollOffset);
+      await tester.pumpAndSettle();
+      expect(scrollController.offset, greaterThan(20));
+
+      // Start drag gesture on the bottom visible paragraph
+      bottomParagraph =
+          _renderParagraphContaining(tester, 'Target bottom paragraph');
+      final Offset startPos =
+          _textOffsetToPosition(bottomParagraph, 11) + const Offset(0, 8);
+      expect(startPos.dy, greaterThan(0));
+      expect(startPos.dy, lessThan(140));
+
+      final TestGesture gesture = await tester.startGesture(
+        startPos,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+
+      // Move pointer up near top edge of the viewport (y = 8) to trigger auto-scroll up
+      await gesture.moveTo(const Offset(60, 8));
+      for (int tick = 0;
+          tick < 180 && scrollController.offset >= 20;
+          tick += 1) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      // Viewport must have scrolled upward all the way to the top
+      expect(scrollController.offset, lessThan(20));
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // Copy selection and verify it includes the top content that scrolled into view
+      final BuildContext copyContext =
+          tester.binding.focusManager.primaryFocus!.context!;
+      Actions.invoke(copyContext, CopySelectionTextIntent.copy);
+      await tester.pump();
+
+      expect(clipboardText, isNotNull);
+      expect(
+        clipboardText!,
+        contains('Top Hidden Section Heading'),
+        reason:
+            'Auto-scroll upward must expand the selection across top hidden content as it scrolls in.',
+      );
+      expect(clipboardText!, contains('Target bott'));
+    },
+  );
+
+  testWidgets(
+    'active drag highlight survives a transient framework geometry clear',
+    (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(const Size(460, 110));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      const String paragraphText =
+          'Selection paint remains continuous while Flutter moves its edge.';
+      final AnimatedMarkdownSelectionController selectionController =
+          AnimatedMarkdownSelectionController();
+      addTearDown(selectionController.dispose);
+      final GlobalKey boundaryKey = GlobalKey();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            backgroundColor: Colors.white,
+            body: RepaintBoundary(
+              key: boundaryKey,
+              child: ColoredBox(
+                color: Colors.white,
+                child: AnimatedStreamingMarkdown.fromMarkdown(
+                  markdown: paragraphText,
+                  padding: const EdgeInsets.all(8),
+                  tokenStaggerDelay: Duration.zero,
+                  tokenAnimationDuration: Duration.zero,
+                  enableSelection: true,
+                  selectionController: selectionController,
+                  theme: const AnimatedMarkdownThemeData(
+                    selectionColor: Color(0xFFFF00FF),
+                    paragraphTextStyle: TextStyle(
+                      color: Colors.black,
+                      fontFamily: _testFontFamily,
+                      fontSize: 16,
+                      height: 1.2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final RenderParagraph paragraph =
+          _renderParagraphContaining(tester, paragraphText);
+      final TestGesture gesture = await tester.startGesture(
+        _textOffsetToPosition(paragraph, 0) + const Offset(2, 8),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveTo(
+        _textOffsetToPosition(paragraph, 32) + const Offset(2, 8),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(selectionController.value.hasSelection, isTrue);
+      final int pixelsBeforeClear = await _selectionPixelCount(
+        tester,
+        boundaryKey,
+        const Color(0xFFFF00FF),
+      );
+      expect(pixelsBeforeClear, greaterThan(100));
+
+      final Selectable selectedProxy = find
+          .byWidgetPredicate(
+            (Widget widget) =>
+                widget.runtimeType.toString() == '_SelectableInlineTextProxy',
+          )
+          .evaluate()
+          .map((Element element) => element.renderObject)
+          .whereType<Selectable>()
+          .firstWhere(
+            (Selectable selectable) =>
+                selectable.getSelectedContent()?.plainText.isNotEmpty ?? false,
+          );
+      final dynamic paintProxy = selectedProxy;
+      final TextRange paintRangeBeforeClear =
+          paintProxy.debugPaintSelectionRange as TextRange;
+
+      // SelectableRegion clears one proxy transiently while transferring an
+      // edge to another proxy. Geometry may be empty for that frame, but the
+      // coordinator-owned paint range must remain visible.
+      selectedProxy.dispatchSelectionEvent(const ClearSelectionEvent());
+      expect(selectedProxy.getSelectedContent(), isNull);
+      expect(
+        paintProxy.debugPaintSelectionRange,
+        paintRangeBeforeClear,
+        reason: 'Framework geometry must not own the persistent paint range.',
+      );
+
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(selectionController.value.hasSelection, isTrue);
+      final int pixelsAfterClear = await _selectionPixelCount(
+        tester,
+        boundaryKey,
+        const Color(0xFFFF00FF),
+      );
+      expect(
+        pixelsAfterClear,
+        greaterThanOrEqualTo((pixelsBeforeClear * 0.95).floor()),
+        reason: 'A transient geometry clear must not create a blank or dim '
+            'selection frame.',
+      );
+
+      await gesture.up();
+      await tester.pump();
+    },
+  );
 }
 
 Future<void> _recordFrame(
@@ -430,6 +814,39 @@ Future<void> _recordFrame(
     find.byKey(boundaryKey),
     matchesGoldenFile('artifacts/$path'),
   );
+}
+
+Future<int> _selectionPixelCount(
+  WidgetTester tester,
+  GlobalKey boundaryKey,
+  Color color,
+) async {
+  final RenderRepaintBoundary boundary =
+      boundaryKey.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+  final Uint8List pixels = (await tester.runAsync<Uint8List>(() async {
+    final ui.Image image = await boundary.toImage(pixelRatio: 1);
+    final ByteData data =
+        (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
+    image.dispose();
+    return Uint8List.fromList(
+      data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
+    );
+  }))!;
+  final int argb = (color as dynamic).value as int;
+  final int alpha = (argb >> 24) & 0xFF;
+  final int red = (argb >> 16) & 0xFF;
+  final int green = (argb >> 8) & 0xFF;
+  final int blue = argb & 0xFF;
+  int count = 0;
+  for (int index = 0; index < pixels.length; index += 4) {
+    if (pixels[index] == red &&
+        pixels[index + 1] == green &&
+        pixels[index + 2] == blue &&
+        pixels[index + 3] == alpha) {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 void _expectOnlySelectedLineHasNativeSelection(
@@ -478,79 +895,24 @@ String _highlightedText(WidgetTester tester) {
   for (final Element element in find
       .byWidgetPredicate(
         (Widget widget) =>
-            widget.runtimeType.toString() == '_InlineSourceSelectionBackdrop',
-      )
-      .evaluate()) {
-    final dynamic widget = element.widget;
-    if (widget.selectionColor == _selectionColor) {
-      highlighted.write(widget.selectedText as String);
-    }
-  }
-  if (highlighted.isNotEmpty) {
-    return highlighted.toString();
-  }
-  for (final Element element in find.byType(RichText).evaluate()) {
-    final RichText widget = element.widget as RichText;
-    _collectHighlightedText(widget.text, highlighted);
-  }
-  return highlighted.toString();
-}
-
-void _expectLineHasNativeSelection(WidgetTester tester, String selectedLine) {
-  if (_proxyHasSelectedContent(tester, selectedLine)) {
-    return;
-  }
-  if (_highlightedText(tester).contains(selectedLine)) {
-    return;
-  }
-  for (final Element element in find.byType(RichText).evaluate()) {
-    final RichText widget = element.widget as RichText;
-    if (!widget.text.toPlainText().contains(selectedLine)) {
-      continue;
-    }
-    final RenderParagraph paragraph = element.renderObject! as RenderParagraph;
-    expect(
-      paragraph.selections,
-      isNotEmpty,
-      reason: 'new drag selection did not attach to "$selectedLine"',
-    );
-    return;
-  }
-  throw StateError('No RichText RenderParagraph contains "$selectedLine".');
-}
-
-bool _proxyHasSelectedContent(WidgetTester tester, String selectedLine) {
-  for (final Element element in find
-      .byWidgetPredicate(
-        (Widget widget) =>
             widget.runtimeType.toString() == '_SelectableInlineTextProxy',
       )
       .evaluate()) {
-    final RenderObject? renderObject = element.renderObject;
-    if (renderObject is! Selectable) {
-      continue;
-    }
-    final Selectable selectable = renderObject as Selectable;
-    if (selectable.getSelectedContent()?.plainText == selectedLine) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void _collectHighlightedText(InlineSpan span, StringBuffer out) {
-  if (span is TextSpan) {
-    final TextStyle? style = span.style;
-    if (style?.backgroundColor == _selectionColor && span.text != null) {
-      out.write(span.text);
-    }
-    final List<InlineSpan>? children = span.children;
-    if (children != null) {
-      for (final InlineSpan child in children) {
-        _collectHighlightedText(child, out);
-      }
+    final dynamic widget = element.widget;
+    final dynamic renderObject = element.renderObject;
+    final TextRange? paintRange =
+        renderObject.debugPaintSelectionRange as TextRange?;
+    if (widget.selectionColor == _selectionColor && paintRange != null) {
+      final String plainText = widget.plainText as String;
+      highlighted.write(
+        plainText.substring(
+          paintRange.start.clamp(0, plainText.length),
+          paintRange.end.clamp(0, plainText.length),
+        ),
+      );
     }
   }
+  return highlighted.toString();
 }
 
 RenderParagraph _renderParagraphContaining(
@@ -608,42 +970,17 @@ MarkdownRenderNode _renderNode(
 }
 
 Future<void> _loadTestFont() async {
-  final String? flutterRoot = Platform.environment['FLUTTER_ROOT'];
-  final String regularPath = await _findFlutterFont(
-    flutterRoot,
-    'Roboto-Regular.ttf',
-  );
-  final String boldPath = await _findFlutterFont(
-    flutterRoot,
-    'Roboto-Bold.ttf',
-  );
-  await _loadFontFamily(_testFontFamily, <String>[regularPath, boldPath]);
-}
-
-Future<String> _findFlutterFont(String? flutterRoot, String fileName) async {
-  final List<String> candidates = <String>[
-    if (flutterRoot != null && flutterRoot.isNotEmpty)
-      '$flutterRoot/bin/cache/artifacts/material_fonts/$fileName',
-    '/Users/hider152/sdk/flutter/bin/cache/artifacts/material_fonts/$fileName',
-  ];
-  for (final String path in candidates) {
-    final File candidate = File(path);
-    if (await candidate.exists()) {
-      return path;
-    }
+  if (kIsWeb) {
+    return;
   }
-  throw StateError('$fileName not found in Flutter SDK cache.');
-}
-
-Future<void> _loadFontFamily(String family, List<String> paths) async {
-  final FontLoader loader = FontLoader(family);
-  for (final String path in paths) {
-    final Uint8List bytes = await File(path).readAsBytes();
-    loader.addFont(
-      Future<ByteData>.value(
-        ByteData.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes),
-      ),
-    );
-  }
+  const String packageAssetRoot =
+      'packages/animated_streaming_markdown/assets/fonts/katex';
+  final FontLoader loader = FontLoader(_testFontFamily)
+    ..addFont(rootBundle.load('$packageAssetRoot/KaTeX_Main-Regular.ttf'))
+    ..addFont(rootBundle.load('$packageAssetRoot/KaTeX_Main-Bold.ttf'));
   await loader.load();
+}
+
+bool _environmentFlag(String name) {
+  return !kIsWeb && Platform.environment[name] == '1';
 }

@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://samnn.dev/live-chat-demo">
-    <img src="https://samnn.dev/img/preview/chat-demo.gif" alt="animated_streaming_markdown chatbot demo with render-backed selection" width="720">
+    <img src="https://samnn.dev/img/preview/chat-demo.gif" alt="animated_streaming_markdown 0.3.7 selection, incomplete-link, and custom-widget demo" width="720">
   </a>
 </p>
 
@@ -38,11 +38,16 @@
 
 ## Latest Update
 
-- **0.3.6 selection architecture**: selection is now projected from stable source ranges through render-backed selectable text, including partial cell selection and cross-block table drags.
-- **Selection auto-scroll**: dragging at viewport edges scrolls vertically, while wide tables also scroll horizontally near their left and right edges.
+- **0.3.7 source-backed controller**: directional selection now lives in an optional `AnimatedMarkdownSelectionController`, so pointer, keyboard, copy, and programmatic changes share one source of truth.
+- **TextField-like selection auto-scroll**: edge dragging advances every frame, keeps the moving endpoint revealed, supports vertical viewports and horizontal tables, and stops without momentum on release.
+- **Lazy sliver selection**: `AnimatedStreamingMarkdownSelectionArea` coordinates selection across mounted sliver children without disabling lazy rendering.
+- **Browser-like flat highlight**: selection paints as one continuous layer per line, supports touch long-press and handles, and includes non-text content such as images and LaTeX in its real laid-out bounds.
+- **Semantic streaming links and selectable custom widgets**: incomplete links expose label, destination, completion state, and source offsets without leaking raw syntax; custom blocks can opt into atomic, text, or fragment-level selection.
+- **Stable streaming state**: incremental appends preserve settled render state and source-backed selection; the chat example keeps each assistant renderer alive while messages are recycled by the list.
+- **Rich clipboard on every supported target**: Web, Android, iOS, macOS, Windows, and Linux receive HTML plus plain text, with a safe plain-text fallback when the host clipboard rejects rich data.
 - **Animation without layout jolts**: settled word tokens compact into lighter static spans while preserving token geometry; the example defaults to the original `Fade` preset and also includes `Gravity`.
 - **Flutter web is first-class**: published builds include the generated Tree-sitter WASM parser asset, so app developers do not need to edit `web/index.html` or copy files manually.
-- **KaTeX-style LaTeX rendering**: inline `$...$` / `\(...\)` and display `$$...$$` / `\[...\]` math now render through `flutter_math_fork`, a pure Dart/Flutter KaTeX parser and renderer.
+- **KaTeX-style LaTeX rendering**: inline `$...$` / `\(...\)` and display `$$...$$` / `\[...\]` math render through the bundled pure-Dart/Flutter renderer derived from `flutter_math_fork`; no separate math dependency is required.
 - **Real chatbot example**: the example app can connect to local Ollama plus ChatGPT/OpenAI, Claude, Gemini, and Grok-compatible cloud APIs.
 
 <details>
@@ -95,17 +100,21 @@ It is designed for chat-like or streaming text interfaces where markdown arrives
 
 ### Prerequisites
 
-- Flutter `>=3.0.0`
+- Flutter `>=3.10.0`
 - Dart SDK `>=3.0.0 <4.0.0`
 - Native toolchain for your target platform (Android/iOS/macOS/Linux/Windows)
 - No extra setup is required for Flutter web consumers; the package ships the generated WASM parser asset and falls back safely when needed.
+
+The package keeps a Flutter `3.10.0` compatibility path and uses newer
+nonlinear text scaling APIs when the running SDK provides them. Current stable
+Flutter releases are supported as well.
 
 ### Installation
 
 1. Add dependency:
    ```yaml
    dependencies:
-    animated_streaming_markdown: ^0.3.6
+    animated_streaming_markdown: ^0.3.7
    ```
 2. Install packages:
    ```sh
@@ -132,7 +141,6 @@ final appendResult = await parser.append('\n\nStreaming **markdown** chunk...');
 ```dart
 AnimatedStreamingMarkdown(
   blocks: appendResult.blocks,
-  asSliver: true,
   tokenStaggerDelay: const Duration(milliseconds: 180),
   tokenAnimationDuration: const Duration(milliseconds: 240),
   enableSelection: true,
@@ -142,7 +150,59 @@ AnimatedStreamingMarkdown(
 The built-in animation is a `Fade` reveal. Supply `tokenAnimationBuilder` only
 when opting into a custom effect such as Gravity or Rotate in.
 
-### 3) Render LaTeX math with KaTeX-compatible syntax
+### 3) Control selection and selectable slivers
+
+Box mode creates its selection area internally. Supply a controller only when
+the app needs to observe or change the source range:
+
+```dart
+final selectionController = AnimatedMarkdownSelectionController();
+
+AnimatedStreamingMarkdown(
+  blocks: appendResult.blocks,
+  enableSelection: true,
+  selectionController: selectionController,
+  selectionScrollPadding: const EdgeInsets.all(20),
+);
+
+// selectionController.selection = const TextSelection(...);
+// selectionController.selectAll();
+```
+
+Sliver mode needs one wrapper around the `CustomScrollView`. The wrapper and
+renderer must share the controller, and one wrapper manages one Markdown
+renderer:
+
+```dart
+AnimatedStreamingMarkdownSelectionArea(
+  controller: selectionController,
+  scrollPadding: const EdgeInsets.all(20),
+  child: CustomScrollView(
+    slivers: [
+      AnimatedStreamingMarkdown(
+        blocks: appendResult.blocks,
+        asSliver: true,
+        enableSelection: true,
+        selectionController: selectionController,
+      ),
+    ],
+  ),
+);
+```
+
+Dispose an app-owned controller with the surrounding `State`.
+
+### 4) Keep a streaming renderer stable
+
+Keep one `MarkdownStreamParser` alive for each active document and call
+`append(chunk)` only for new chunks. Preserve the identity of the widget that
+owns a message renderer (for example with a stable message key in a
+`ListView`); do not create a new parser or changing renderer key from `build`.
+This lets settled token animation, selection, and controller state survive
+later messages and list recycling. Use `replace(markdown)` when an update is a
+complete snapshot rather than an append.
+
+### 5) Render LaTeX math with KaTeX-compatible syntax
 
 LaTeX is supported in both inline and display forms:
 
@@ -160,7 +220,7 @@ $$
 );
 ```
 
-Use `latexBuilder` to wrap or replace the default `flutter_math_fork` widget:
+Use `latexBuilder` to wrap or replace the default bundled math widget:
 
 ```dart
 AnimatedStreamingMarkdown(
@@ -171,7 +231,46 @@ AnimatedStreamingMarkdown(
 );
 ```
 
-### 4) Important APIs
+Custom image and LaTeX widgets retain the renderer's semantic selection proxy.
+When `blockBuilder` replaces a complete block with a non-text object, declare
+the object's plain-text meaning with `AnimatedMarkdownSelectable`:
+
+```dart
+blockBuilder: (context, block) {
+  return AnimatedMarkdownSelectable(
+    plainText: block.block.content,
+    child: MyCustomMarkdownObject(block: block.block),
+  );
+},
+```
+
+The default constructor selects the custom object atomically. For a custom text
+renderer, including Flutter's `SelectableText`, use the character-level
+constructor:
+
+```dart
+return AnimatedMarkdownSelectable.text(
+  plainText: block.block.content,
+  child: SelectableText(block.block.content),
+);
+```
+
+For a composite object, use `AnimatedMarkdownSelectable.fragments` and wrap
+each visible text region with `AnimatedMarkdownSelectionFragment`, supplying
+its local `plainTextStart`. Buttons and other siblings remain interactive while
+the declared fragments join the surrounding Markdown selection. Plain/raw/rich
+copy always comes from the controller's original Markdown source.
+
+Incomplete streaming links are also exposed semantically through
+`MarkdownBlock.inlineLinks`. By default, `[Hel` paints nothing,
+`[Hello](https://hello` paints a tappable `https://hello`, and the completed
+`[Hello](https://hello)` paints the linked label. Override only the temporary
+projection with `incompleteLinkTextBuilder` when an application prefers the
+label or wants to suppress the construct until completion.
+Only a direct inline link at the active streamed tail is provisional; code,
+autolinks, images, and escaped opening brackets are not reclassified.
+
+### 6) Important APIs
 
 - `MarkdownStreamParser.start()`
 - `MarkdownStreamParser.replace(markdown)`
@@ -182,19 +281,23 @@ AnimatedStreamingMarkdown(
 - `warmUpStreamingMarkdownParser(includeWorker: true)`
 - `AnimatedStreamingMarkdown(...)`
 - `AnimatedStreamingMarkdown.fromMarkdown(...)`
-  - `blocks`
-  - `asSliver`
-  - `tokenStaggerDelay`
-  - `tokenAnimationDuration` / `tokenAnimationDurationFactor`
-  - `tokenAnimationBuilder`
-  - `tokenCompaction`
-  - `onTokenDelay`
-  - `showCodeBlockCopyButton`
-  - `enableSelection`
-  - `selectionStrategy`
-  - `blockBuilder`
-  - `imageBuilder`
-  - `latexBuilder`
+- `AnimatedStreamingMarkdownSelectionArea(...)`
+- `AnimatedMarkdownSelectionController`
+- `AnimatedMarkdownSelectionValue`
+  - `sourceText`
+  - `selection`
+  - `hasSelection`
+  - `selectedMarkdown`
+- Renderer options: `blocks`, `asSliver`, `enableSelection`,
+  `selectionStrategy`, `selectionController`, `selectionScrollPadding`,
+  `tokenStaggerDelay`, `tokenAnimationDuration`, `tokenAnimationBuilder`,
+  `tokenCompaction`, `showCodeBlockCopyButton`, `blockBuilder`, `imageBuilder`,
+  `latexBuilder`, `incompleteLinkTextBuilder`, `AnimatedMarkdownSelectable`
+
+`selectionStrategy` accepts `plain`, `raw`, or `rich`. Rich copy keeps the
+selected source range as the authority and supplies HTML and plain text to the
+clipboard. See [Selection Copy](https://samnn.dev/selection-copy) for the
+platform details and fallback behavior.
 
 For a complete integration sample, check [`example/lib/src/demos/markdown_cases_demo.dart`](example/lib/src/demos/markdown_cases_demo.dart).
 For the full chatbot sample with Ollama, ChatGPT/OpenAI, Claude, Gemini, and Grok providers, check [`example/lib/main.dart`](example/lib/main.dart).
@@ -202,7 +305,7 @@ For the full chatbot sample with Ollama, ChatGPT/OpenAI, Claude, Gemini, and Gro
 ## Documentation
 
 - [Documentation site](https://samnn.dev)
-- [Live web chatbot demo](https://samnn.dev/live-chat-demo)
+- [Live web demo and 0.3.7 interaction recording](https://samnn.dev/live-chat-demo)
 - [Package page](https://pub.dev/packages/animated_streaming_markdown)
 - [Generated API reference](https://pub.dev/documentation/animated_streaming_markdown/latest/)
 - [Example app](https://github.com/samnn152/streaming-markdown/tree/main/example)
