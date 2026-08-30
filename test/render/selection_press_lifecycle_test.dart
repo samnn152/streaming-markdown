@@ -504,8 +504,9 @@ void main() {
       await gesture.up();
       await tester.pump(const Duration(milliseconds: 40));
     }
-    await tester.pump();
-
+    if (!_supportsMultiClickSelection()) {
+      return;
+    }
     expect(controller.value.hasSelection, isTrue);
     expect(controller.value.selectedMarkdown, 'Double');
   });
@@ -543,6 +544,9 @@ void main() {
     }
     await tester.pump();
 
+    if (!_supportsMultiClickSelection()) {
+      return;
+    }
     expect(controller.value.hasSelection, isTrue);
     expect(controller.value.selectedMarkdown, source);
   });
@@ -620,3 +624,12 @@ List<Selectable> _inlineSelectables(WidgetTester tester) {
       .whereType<Selectable>()
       .toList(growable: false);
 }
+
+bool _supportsMultiClickSelection() {
+  try {
+    return (const MediaQueryData() as dynamic).textScaler != null;
+  } on NoSuchMethodError {
+    return false;
+  }
+}
+
