@@ -386,6 +386,14 @@ quality gates.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+## Support
+
+If this package helps you, consider buying me a coffee:
+
+<a href="https://www.buymeacoffee.com/samnn152" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" style="height: 60px !important;width: 217px !important;" ></a>
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
 ## License
 
 Distributed under the Apache-2.0 License. See [`LICENSE`](LICENSE) for details.
